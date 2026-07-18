@@ -81,6 +81,18 @@ def _artifact_root_or_fail(config: Config) -> Path:
     raise AssertionError  # unreachable
 
 
+def _resolve_report_date(value: str | None) -> str:
+    if value is None:
+        return date_type.today().isoformat()
+    try:
+        parsed = date_type.fromisoformat(value)
+    except ValueError:
+        _fail("--date はYYYY-MM-DD形式で指定する", 2)
+    if parsed.isoformat() != value:
+        _fail("--date はYYYY-MM-DDの正規形で指定する", 2)
+    return value
+
+
 def _make_budget(config: Config, max_mini: int | None, max_flagship: int | None) -> TokenBudget:
     return TokenBudget(
         {
@@ -218,9 +230,24 @@ def morning(
     max_flagship_tokens: Annotated[
         int | None, typer.Option(help="flagship系トークン上限(既定: 環境変数または70,000)")
     ] = None,
+    report_date: Annotated[
+        str | None,
+        typer.Option(
+            "--date",
+            help="開発用の報告日YYYY-MM-DD。dry-run以外は明示的な許可が必要",
+        ),
+    ] = None,
 ) -> None:
     """朝の観測ジョブ: 収集 → 選別(mini) → 統合(flagship) → 日次報告。"""
-    today = date_type.today().isoformat()
+    today = _resolve_report_date(report_date)
+    if report_date is not None and not dry_run:
+        guard_config = _load_config_or_fail()
+        if not guard_config.allow_date_override:
+            _fail(
+                "本番台帳への合成日付混入を防ぐため--dateを拒否した。"
+                "開発台帳だけでASTROLABE_ALLOW_DATE_OVERRIDE=1を設定する",
+                2,
+            )
 
     if dry_run:
         fdir = _resolve_fixtures_dir(fixtures_dir)

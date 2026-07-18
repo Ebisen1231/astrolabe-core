@@ -1,6 +1,7 @@
 """CLIの受け入れ条件に対応するテスト(typer CliRunner、すべてオフライン)。"""
 
 import contextlib
+import json
 import re
 from pathlib import Path
 
@@ -133,6 +134,46 @@ def test_morning_dry_run_needs_no_env():
         app, ["morning", "--dry-run", "--fixtures-dir", str(FIXTURES_DIR)]
     )
     assert result.exit_code == 0, all_output(result)
+
+
+def test_morning_dry_run_date_override_drives_report_and_gold_ring():
+    result = runner.invoke(
+        app,
+        [
+            "morning",
+            "--dry-run",
+            "--date",
+            "2026-07-25",
+            "--fixtures-dir",
+            str(FIXTURES_DIR),
+        ],
+    )
+    assert result.exit_code == 0, all_output(result)
+    assert "ASTROLABE 朝の観測報告  2026-07-25" in result.output
+    exports_match = re.search(r"^Exports: (.+)$", result.output, flags=re.MULTILINE)
+    assert exports_match is not None
+    map_export = json.loads(
+        (Path(exports_match.group(1).strip()) / "map.json").read_text(encoding="utf-8")
+    )
+    assert map_export["latest_report_date"] == "2026-07-25"
+    assert map_export["today_node_ids"]
+
+
+def test_morning_real_date_override_is_rejected_before_ledger_or_api(tmp_path, monkeypatch):
+    path = tmp_path / "must-not-be-created.db"
+    monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(path))
+
+    result = runner.invoke(app, ["morning", "--date", "2026-07-25"])
+
+    assert result.exit_code == 2
+    assert "ASTROLABE_ALLOW_DATE_OVERRIDE=1" in all_output(result)
+    assert not path.exists()
+
+
+def test_morning_invalid_date_is_rejected():
+    result = runner.invoke(app, ["morning", "--dry-run", "--date", "2026-7-25"])
+    assert result.exit_code == 2
+    assert "YYYY-MM-DD" in all_output(result)
 
 
 def test_morning_real_requires_env():

@@ -57,6 +57,11 @@ def test_invalid_backend_is_rejected():
         load_config(env={"ASTROLABE_BACKEND": "memory"})
 
 
+def test_date_override_requires_exact_opt_in():
+    assert not load_config(env={"ASTROLABE_ALLOW_DATE_OVERRIDE": "true"}).allow_date_override
+    assert load_config(env={"ASTROLABE_ALLOW_DATE_OVERRIDE": "1"}).allow_date_override
+
+
 def test_api_required_lists_all_missing():
     with pytest.raises(ConfigError) as exc:
         load_config(require_api=True, env={})

@@ -44,6 +44,25 @@ def test_seen_keys_from_ledger(ledger):
     assert seen_keys_from_ledger(ledger) == {"t:x", "u:y"}
 
 
+def test_seen_keys_respect_simulated_report_date(ledger):
+    events_mod.append_event(
+        ledger,
+        "proposed",
+        "past",
+        {"report_date": "2026-07-24", "dedupe_keys": ["u:past"]},
+        "2026-07-24T00:00:00+00:00",
+    )
+    events_mod.append_event(
+        ledger,
+        "proposed",
+        "future",
+        {"report_date": "2026-07-26", "dedupe_keys": ["u:future"]},
+        "2026-07-26T00:00:00+00:00",
+    )
+
+    assert seen_keys_from_ledger(ledger, as_of_date="2026-07-25") == {"u:past"}
+
+
 def test_item_keys_contains_title_and_urls():
     keys = item_keys({"id": "2507.1", "title": "A B", "url": "https://arxiv.org/abs/2507.1v1"})
     assert "t:a b" in keys
