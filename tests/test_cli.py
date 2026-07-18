@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from astrolabe.cli import app
 from astrolabe.ledger import db, store
+from astrolabe.ledger.backend import LedgerBackendError
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 runner = CliRunner()
@@ -180,6 +181,36 @@ def test_morning_real_requires_env():
     result = runner.invoke(app, ["morning"])
     assert result.exit_code == 2
     assert "OPENAI_API_KEY" in all_output(result)
+
+
+def test_morning_supabase_failure_is_visible_without_sqlite_fallback(monkeypatch, tmp_path):
+    class UnavailableLedger:
+        kind = "supabase"
+        closed = False
+
+        def get_profile(self):
+            raise LedgerBackendError("Supabase unavailable")
+
+        def close(self):
+            self.closed = True
+
+    ledger = UnavailableLedger()
+    monkeypatch.setenv("ASTROLABE_BACKEND", "supabase")
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SERVICE_ROLE_KEY", "test-key")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-api-key")
+    monkeypatch.setenv("ASTROLABE_MODEL_MINI", "mini")
+    monkeypatch.setenv("ASTROLABE_MODEL_FLAGSHIP", "flagship")
+    monkeypatch.setenv("ASTROLABE_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setattr("astrolabe.cli._open_ledger_or_fail", lambda _config: ledger)
+    monkeypatch.setattr("astrolabe.cli._run_canaries", lambda _llm: None)
+    monkeypatch.setattr("astrolabe.cli.morning_mod.collect_items", lambda *args, **kwargs: [])
+
+    result = runner.invoke(app, ["morning"])
+
+    assert result.exit_code == 2
+    assert "SQLiteへはフォールバックしない" in all_output(result)
+    assert ledger.closed
 
 
 # --- export ---------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""CLI: astrolabe init / interview / morning [--dry-run] / export / report / canary
+"""CLI: 台帳・朝ジョブ・export・migration・snapshot・通知。
 
 終了コード: 0=成功 / 1=致命的エラー・データなし / 2=設定不備または要調査 / 3=予算超過
 """
@@ -34,7 +34,7 @@ from astrolabe.llm.fixtures import FixtureLLM
 from astrolabe.notify_discord import send_discord_report
 from astrolabe.pipeline import morning as morning_mod
 
-app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M2)")
+app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M3)")
 log = logging.getLogger("astrolabe")
 
 
@@ -180,17 +180,21 @@ def interview() -> None:
     typer.echo(f"登録内容: 興味 {len(interests)}件 / 既知概念 {len(known)}件")
     if not typer.confirm("この内容で台帳に記録する?", default=True):
         _fail("中止した(台帳は変更していない)", 1)
-    result = store.record_interview(
-        conn,
-        {
-            "interests": interests,
-            "goals": goals,
-            "background": background,
-            "time_budget": time_budget,
-        },
-        known,
-    )
-    conn.close()
+    try:
+        result = store.record_interview(
+            conn,
+            {
+                "interests": interests,
+                "goals": goals,
+                "background": background,
+                "time_budget": time_budget,
+            },
+            known,
+        )
+    except LedgerBackendError as exc:
+        _fail(f"台帳バックエンドエラー: {exc}", 2)
+    finally:
+        conn.close()
     typer.echo(
         f"記録完了: marked_known {result['known']}件 / "
         f"concepts {result['concepts']}件 / edges {result['edges']}件"
@@ -279,27 +283,27 @@ def morning(
 
     config = _load_config_or_fail(require_ledger=True, require_api=True)
     conn = _open_ledger_or_fail(config)
-    feedback_client = _feedback_client(config)
-    if feedback_client is not None:
-        try:
-            feedback = sync_feedback(conn, feedback_client, logger=log)
-            typer.secho(
-                "フィードバック: "
-                f"反映 {feedback.imported} / 既存 {feedback.already_recorded} / "
-                f"close {feedback.closed} / close失敗 {feedback.close_failed}",
-                err=True,
-            )
-        finally:
-            feedback_client.close()
-    budget = _make_budget(config, max_mini_tokens, max_flagship_tokens)
-    llm = ResponsesLLM(
-        api_key=config.api_key,
-        models={"mini": config.model_mini, "flagship": config.model_flagship},
-        budget=budget,
-        logger=log,
-    )
-    _run_canaries(llm)
     try:
+        feedback_client = _feedback_client(config)
+        if feedback_client is not None:
+            try:
+                feedback = sync_feedback(conn, feedback_client, logger=log)
+                typer.secho(
+                    "フィードバック: "
+                    f"反映 {feedback.imported} / 既存 {feedback.already_recorded} / "
+                    f"close {feedback.closed} / close失敗 {feedback.close_failed}",
+                    err=True,
+                )
+            finally:
+                feedback_client.close()
+        budget = _make_budget(config, max_mini_tokens, max_flagship_tokens)
+        llm = ResponsesLLM(
+            api_key=config.api_key,
+            models={"mini": config.model_mini, "flagship": config.model_flagship},
+            budget=budget,
+            logger=log,
+        )
+        _run_canaries(llm)
         items = morning_mod.collect_items(config, arxiv_max=arxiv_max, logger=log)
         ledger_root = _artifact_root_or_fail(config)
         outcome = morning_mod.run_morning(
@@ -313,6 +317,8 @@ def morning(
         _fail(f"トークン予算により中断。台帳へは未反映: {e}", 3)
     except LLMCallError as e:
         _fail(f"LLM呼び出しに失敗して中断。台帳へは未反映: {e}", 1)
+    except LedgerBackendError as e:
+        _fail(f"台帳バックエンドエラーで中断(SQLiteへはフォールバックしない): {e}", 2)
     finally:
         conn.close()
     typer.echo(outcome.report_text)
@@ -332,7 +338,7 @@ def export_data(
     conn = _open_ledger_or_fail(config)
     try:
         result = exporter.export_ledger(conn, output_dir)
-    except exporter.ExportError as exc:
+    except (exporter.ExportError, LedgerBackendError) as exc:
         _fail(f"exportに失敗: {exc}", 2)
     finally:
         conn.close()
@@ -419,6 +425,8 @@ def feedback_import(
     conn = _open_ledger_or_fail(config)
     try:
         result = import_feedback_issues(conn, client, logger=log)
+    except LedgerBackendError as exc:
+        _fail(f"フィードバックの台帳反映に失敗: {exc}", 2)
     finally:
         conn.close()
         client.close()
@@ -453,6 +461,8 @@ def notify_discord() -> None:
     conn = _open_ledger_or_fail(config)
     try:
         report_row = store.get_daily_report(conn)
+    except LedgerBackendError as exc:
+        _fail(f"Discord通知用の台帳読み出しに失敗: {exc}", 2)
     finally:
         conn.close()
     if report_row is None:
@@ -485,8 +495,12 @@ def report(
     """直近(または指定日)の日次報告を再表示する。"""
     config = _load_config_or_fail(require_ledger=True)
     conn = _open_ledger_or_fail(config)
-    row = store.get_daily_report(conn, date)
-    conn.close()
+    try:
+        row = store.get_daily_report(conn, date)
+    except LedgerBackendError as exc:
+        _fail(f"報告の台帳読み出しに失敗: {exc}", 2)
+    finally:
+        conn.close()
     if row is None:
         _fail("報告がまだない。先に `astrolabe morning` を実行する", 1)
     items = row["items"]
