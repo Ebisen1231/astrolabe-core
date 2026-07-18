@@ -24,7 +24,6 @@ jobs:
       ASTROLABE_LEDGER_REPOSITORY: Ebisen1231/astrolabe-ledger
       ASTROLABE_MODEL_MINI: gpt-5.4-nano # 無料枠対象の変更時はここを更新
       ASTROLABE_MODEL_FLAGSHIP: gpt-5.6-terra # 無料枠対象の変更時はここを更新
-      ASTROLABE_CACHE_DIR: ${{ runner.temp }}/astrolabe-cache
 
     steps:
       - name: Checkout private ledger
@@ -79,6 +78,8 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # runner コンテキストは job レベル env では未解決のため step 側に置く
+          ASTROLABE_CACHE_DIR: ${{ runner.temp }}/astrolabe-cache
         run: core/.venv/bin/astrolabe morning
 
       - name: Persist ledger and HTML report
