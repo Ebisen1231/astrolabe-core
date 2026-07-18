@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from astrolabe import layout
-from astrolabe.ledger import store
+from astrolabe.ledger import events, store
 
 SCHEMA_VERSION = 1
 
@@ -44,20 +43,15 @@ def _load_existing_layout(path: Path) -> dict | None:
     return value
 
 
-def _first_proposed_report_dates(conn: sqlite3.Connection) -> dict[str, str]:
+def _first_proposed_report_dates(conn) -> dict[str, str]:
     first_dates: dict[str, str] = {}
-    rows = conn.execute(
-        "SELECT concept_id, payload FROM events"
-        " WHERE type = 'proposed' AND concept_id IS NOT NULL ORDER BY id"
-    ).fetchall()
-    for row in rows:
+    for row in events.load_events(conn):
+        if row["type"] != "proposed" or row.get("concept_id") is None:
+            continue
         concept_id = str(row["concept_id"])
         if concept_id in first_dates:
             continue
-        try:
-            payload = json.loads(row["payload"] or "{}")
-        except json.JSONDecodeError as exc:
-            raise ExportError(f"proposedイベントのpayloadが不正: {concept_id}") from exc
+        payload = row.get("payload") or {}
         report_date = str(payload.get("report_date", ""))
         if report_date:
             first_dates[concept_id] = report_date
@@ -74,7 +68,7 @@ def _validate_report_date(value: str) -> str:
     return value
 
 
-def export_ledger(conn: sqlite3.Connection, output_dir: Path) -> ExportResult:
+def export_ledger(conn, output_dir: Path) -> ExportResult:
     """台帳全体をUI契約へ書き出す。生成時刻は含めず、同一台帳なら同一bytesにする。"""
     concepts = store.list_concepts(conn)
     edges = store.list_edges(conn)

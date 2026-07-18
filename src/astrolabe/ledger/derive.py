@@ -26,9 +26,10 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
+
+from astrolabe.ledger.backend import LedgerBackend, as_backend
 
 VALID_EDGE_TYPES = {"prerequisite", "related", "derived_from", "appeared_in"}
 
@@ -155,38 +156,8 @@ def derive(events: list[dict]) -> tuple[list[dict], list[dict]]:
     return concept_rows, edge_rows
 
 
-def rebuild(conn: sqlite3.Connection) -> tuple[int, int]:
+def rebuild(conn: LedgerBackend) -> tuple[int, int]:
     """全イベントから concepts / edges を作り直してテーブルを置き換える。"""
-    from astrolabe.ledger import events as events_mod
-
-    concept_rows, edge_rows = derive(events_mod.load_events(conn))
-    with conn:
-        conn.execute("DELETE FROM concepts")
-        conn.execute("DELETE FROM edges")
-        conn.executemany(
-            "INSERT INTO concepts(id, name, kind, status, confidence, summary, source_urls,"
-            " first_seen, last_touched) VALUES(?,?,?,?,?,?,?,?,?)",
-            [
-                (
-                    c["id"],
-                    c["name"],
-                    c["kind"],
-                    c["status"],
-                    c["confidence"],
-                    c["summary"],
-                    json.dumps(c["source_urls"], ensure_ascii=False),
-                    c["first_seen"],
-                    c["last_touched"],
-                )
-                for c in concept_rows
-            ],
-        )
-        conn.executemany(
-            "INSERT INTO edges(src, dst, type, weight, created_by, created_at)"
-            " VALUES(?,?,?,?,?,?)",
-            [
-                (e["src"], e["dst"], e["type"], e["weight"], e["created_by"], e["created_at"])
-                for e in edge_rows
-            ],
-        )
-    return len(concept_rows), len(edge_rows)
+    backend = as_backend(conn)
+    concept_rows, edge_rows = derive(backend.load_events())
+    return backend.replace_derived(concept_rows, edge_rows)

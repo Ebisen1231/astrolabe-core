@@ -74,6 +74,15 @@ CREATE TABLE IF NOT EXISTS daily_reports(
   map_delta_text TEXT NOT NULL DEFAULT '',
   html_path      TEXT
 );
+
+-- 日次の実測トークン使用量。run_id単位で冪等に記録し、日次集計できる。
+CREATE TABLE IF NOT EXISTS llm_usage(
+  usage_date TEXT NOT NULL,
+  run_id     TEXT NOT NULL,
+  model_role TEXT NOT NULL,
+  tokens     INTEGER NOT NULL CHECK(tokens >= 0),
+  PRIMARY KEY(usage_date, run_id, model_role)
+);
 """
 
 

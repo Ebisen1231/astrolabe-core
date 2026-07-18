@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 import re
-import sqlite3
 import unicodedata
+
+from astrolabe.ledger import events
 
 
 def normalize_title(title: str) -> str:
@@ -55,11 +56,15 @@ def filter_seen(items: list[dict], seen_keys: set[str]) -> list[dict]:
     return [i for i in items if not (item_keys(i) & seen_keys)]
 
 
-def seen_keys_from_ledger(conn: sqlite3.Connection) -> set[str]:
-    import json
-
+def seen_keys_from_ledger(conn, *, as_of_date: str | None = None) -> set[str]:
+    """指定報告日までのproposedイベントから既出キーを返す。"""
     keys: set[str] = set()
-    for row in conn.execute("SELECT payload FROM events WHERE type = 'proposed'"):
-        payload = json.loads(row["payload"] or "{}")
+    for row in events.load_events(conn):
+        if row["type"] != "proposed":
+            continue
+        payload = row.get("payload") or {}
+        report_date = str(payload.get("report_date", ""))
+        if as_of_date is not None and report_date and report_date > as_of_date:
+            continue
         keys.update(payload.get("dedupe_keys", []))
     return keys

@@ -9,12 +9,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from sqlite3 import Connection
 
 from astrolabe import render, render_html
 from astrolabe.collect import arxiv, dedupe, rss
 from astrolabe.config import Config
 from astrolabe.ledger import derive, events, store
+from astrolabe.ledger.backend import LedgerBackend
 from astrolabe.llm import synthesize, triage
 from astrolabe.llm.budget import TokenBudget
 
@@ -61,7 +61,7 @@ def collect_items(
 
 
 def run_morning(
-    conn: Connection,
+    conn: LedgerBackend,
     llm,
     items: list[dict],
     *,
@@ -72,6 +72,7 @@ def run_morning(
     html_output_dir: Path | None = None,
     html_path_base: Path | None = None,
     feedback_repository: str = render_html.DEFAULT_LEDGER_REPOSITORY,
+    run_id: str = "local",
     logger: logging.Logger | None = None,
 ) -> MorningOutcome:
     logger = logger or logging.getLogger("astrolabe.morning")
@@ -81,7 +82,7 @@ def run_morning(
         logger.warning("プロファイル未登録。`astrolabe interview` で選別精度が上がる")
 
     batch = dedupe.dedupe_items(items)
-    fresh = dedupe.filter_seen(batch, dedupe.seen_keys_from_ledger(conn))
+    fresh = dedupe.filter_seen(batch, dedupe.seen_keys_from_ledger(conn, as_of_date=today))
     meta: dict = {
         "collected": len(items),
         "after_dedupe": len(batch),
@@ -149,6 +150,7 @@ def run_morning(
         map_delta,
         stored_html_path,
     )
+    store.save_llm_usage(conn, today, run_id, meta["usage"])
     return MorningOutcome(
         report_text=render.render_report(today, topics, map_delta, meta),
         date=today,
@@ -160,7 +162,7 @@ def run_morning(
 
 
 def _record_topics(
-    conn: Connection, topics: list[dict], top_items: list[dict], today: str
+    conn: LedgerBackend, topics: list[dict], top_items: list[dict], today: str
 ) -> None:
     """トピックを proposed イベントとして追記する(events が一次データ)。
 
@@ -171,34 +173,38 @@ def _record_topics(
         dedupe.canonical_url(item.get("url", "")): sorted(dedupe.item_keys(item))
         for item in top_items
     }
-    with conn:
-        for t in topics:
-            keys: list[str] = []
-            for url in t.get("source_urls", []):
-                keys += url_to_keys.get(dedupe.canonical_url(url), [])
-            edges = [
-                {
-                    "dst": derive.concept_id_from_name(r["name"]),
-                    "dst_name": r["name"],
-                    "type": r["type"],
-                    "weight": 1.0,
-                }
-                for r in t.get("related", [])
-            ]
-            events.append_event(
-                conn,
-                "proposed",
-                concept_id=derive.concept_id_from_name(t["name"]),
-                payload={
-                    "name": t["name"],
-                    "kind": t.get("kind", "concept"),
-                    "summary": t.get("summary", ""),
-                    "source_urls": t.get("source_urls", []),
-                    "edges": edges,
-                    "learn_content": t.get("learn_content", ""),
-                    "why_now": t.get("why_now", ""),
-                    "est_minutes": t.get("est_minutes"),
+    ts = events.utcnow_iso()
+    event_rows: list[dict] = []
+    for topic in topics:
+        keys: list[str] = []
+        for url in topic.get("source_urls", []):
+            keys += url_to_keys.get(dedupe.canonical_url(url), [])
+        related_edges = [
+            {
+                "dst": derive.concept_id_from_name(relation["name"]),
+                "dst_name": relation["name"],
+                "type": relation["type"],
+                "weight": 1.0,
+            }
+            for relation in topic.get("related", [])
+        ]
+        event_rows.append(
+            {
+                "ts": ts,
+                "type": "proposed",
+                "concept_id": derive.concept_id_from_name(topic["name"]),
+                "payload": {
+                    "name": topic["name"],
+                    "kind": topic.get("kind", "concept"),
+                    "summary": topic.get("summary", ""),
+                    "source_urls": topic.get("source_urls", []),
+                    "edges": related_edges,
+                    "learn_content": topic.get("learn_content", ""),
+                    "why_now": topic.get("why_now", ""),
+                    "est_minutes": topic.get("est_minutes"),
                     "report_date": today,
                     "dedupe_keys": sorted(set(keys)),
                 },
-            )
+            }
+        )
+    events.append_events(conn, event_rows)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 import time
@@ -11,7 +10,7 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from astrolabe.ledger import derive, events
+from astrolabe.ledger import derive, events, store
 
 GITHUB_API = "https://api.github.com"
 TITLE_PATTERN = re.compile(
@@ -121,8 +120,8 @@ class GitHubFeedbackClient:
 
 def _recorded_issue_numbers(conn, repository: str) -> set[int]:
     recorded: set[int] = set()
-    for row in conn.execute("SELECT payload FROM events ORDER BY id"):
-        payload = json.loads(row["payload"] or "{}")
+    for row in events.load_events(conn):
+        payload = row.get("payload") or {}
         feedback = payload.get("feedback") or {}
         if feedback.get("repository") == repository and isinstance(
             feedback.get("issue_number"), int
@@ -147,16 +146,15 @@ def import_feedback_issues(
         logger.warning("GitHubフィードバック取得をスキップ: %s", exc)
         return result
 
-    imported_any = False
+    concept_names = {row["id"]: row["name"] for row in store.list_concepts(conn)}
+    pending_events: list[dict] = []
     for issue in issues:
         if issue.number in recorded:
             result.already_recorded += 1
             result.issues_to_close.append(issue.number)
             continue
-        concept = conn.execute(
-            "SELECT id, name FROM concepts WHERE id = ?", (issue.concept_id,)
-        ).fetchone()
-        if concept is None:
+        concept_name = concept_names.get(issue.concept_id)
+        if concept_name is None:
             result.invalid += 1
             logger.warning(
                 "未知concept_idのフィードバックIssue #%dを保留: %s",
@@ -167,7 +165,7 @@ def import_feedback_issues(
 
         event_type = "selected" if issue.action == "selected-later" else issue.action
         payload = {
-            "name": concept["name"],
+            "name": concept_name,
             "feedback": {
                 "repository": client.repository,
                 "issue_number": issue.number,
@@ -176,14 +174,20 @@ def import_feedback_issues(
         }
         if issue.action == "selected-later":
             payload["later"] = True
-        with conn:
-            events.append_event(conn, event_type, issue.concept_id, payload)
+        pending_events.append(
+            {
+                "ts": events.utcnow_iso(),
+                "type": event_type,
+                "concept_id": issue.concept_id,
+                "payload": payload,
+            }
+        )
         recorded.add(issue.number)
         result.imported += 1
         result.issues_to_close.append(issue.number)
-        imported_any = True
 
-    if imported_any:
+    if pending_events:
+        events.append_events(conn, pending_events)
         derive.rebuild(conn)
     return result
 
