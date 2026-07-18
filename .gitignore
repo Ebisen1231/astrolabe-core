@@ -1,0 +1,21 @@
+# 台帳・秘密情報(絶対にコミットしない)
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+.env
+.env.*
+
+# R
+.Rhistory
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
