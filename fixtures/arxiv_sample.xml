@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title type="html">ArXiv Query: search_query=cat:cs.CL OR cat:cs.AI OR cat:cs.LG</title>
+  <id>http://arxiv.org/api/fixture-sample</id>
+  <updated>2026-07-17T00:00:00-04:00</updated>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11001v1</id>
+    <updated>2026-07-16T17:59:59Z</updated>
+    <published>2026-07-16T17:59:59Z</published>
+    <title>Self-Correcting Retrieval-Augmented Generation
+      with Verifier Feedback</title>
+    <summary>  We propose a retrieval-augmented generation framework in which a
+      lightweight verifier scores each draft answer and triggers re-retrieval
+      when confidence is low. On four QA benchmarks the method reduces
+      hallucinated answers by 38% with a single extra mini-model call.  </summary>
+    <author><name>A. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11001v1" rel="alternate" type="text/html"/>
+    <link title="pdf" href="http://arxiv.org/pdf/2507.11001v1" rel="related" type="application/pdf"/>
+    <arxiv:primary_category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11002v1</id>
+    <updated>2026-07-16T16:30:00Z</updated>
+    <published>2026-07-16T16:30:00Z</published>
+    <title>AgentBench-Lite: Evaluating Tool-Use Agents under Budget Constraints</title>
+    <summary>  We introduce a benchmark for tool-use agents that measures task
+      success under explicit token and latency budgets, and show that ranking
+      of popular agent frameworks changes substantially once cost is included.  </summary>
+    <author><name>B. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11002v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11003v1</id>
+    <updated>2026-07-16T15:00:00Z</updated>
+    <published>2026-07-16T15:00:00Z</published>
+    <title>Sparse Mixture-of-Experts Training at Small Scale: A Practical Study</title>
+    <summary>  A systematic study of sparse MoE training recipes reproducible on
+      a single 8-GPU node, including router stability tricks and an open
+      training harness.  </summary>
+    <author><name>C. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11003v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11004v1</id>
+    <updated>2026-07-16T14:10:00Z</updated>
+    <published>2026-07-16T14:10:00Z</published>
+    <title>A Survey of Memory Architectures for LLM Agents</title>
+    <summary>  We categorize memory designs for LLM agents into episodic,
+      semantic and procedural stores, and map 60 recent systems onto this
+      taxonomy with a discussion of open evaluation problems.  </summary>
+    <author><name>D. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11004v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.AI" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11005v1</id>
+    <updated>2026-07-16T13:00:00Z</updated>
+    <published>2026-07-16T13:00:00Z</published>
+    <title>Contrastive Reranking for Dense Retrieval</title>
+    <summary>  We train a reranker with contrastive pairs mined from retrieval
+      failures, improving nDCG@10 by 4.2 points over cross-encoder baselines
+      while halving inference cost.  </summary>
+    <author><name>E. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11005v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2507.11006v1</id>
+    <updated>2026-07-16T12:00:00Z</updated>
+    <published>2026-07-16T12:00:00Z</published>
+    <title>Understanding Grokking through Circuit Formation</title>
+    <summary>  We analyze delayed generalization in small transformers and link
+      grokking onset to the formation of sparse computational circuits,
+      offering a predictive early-stopping criterion.  </summary>
+    <author><name>F. Researcher</name></author>
+    <link href="http://arxiv.org/abs/2507.11006v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+</feed>

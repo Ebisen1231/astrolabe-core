@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Fixture Tech Blog</title>
+    <link>https://example.com/blog</link>
+    <description>オフライン開発用のサンプルフィード</description>
+    <item>
+      <title>Contrastive Reranking for Dense Retrieval</title>
+      <link>https://example.com/blog/reranking</link>
+      <guid>https://example.com/blog/reranking</guid>
+      <pubDate>Thu, 16 Jul 2026 20:00:00 GMT</pubDate>
+      <description><![CDATA[<p>arXivの新しいリランキング論文の紹介記事。<b>タイトル重複</b>の除去テスト用。</p>]]></description>
+    </item>
+    <item>
+      <title>Prompt caching economics for agent pipelines</title>
+      <link>https://example.com/blog/prompt-caching</link>
+      <guid>https://example.com/blog/prompt-caching</guid>
+      <pubDate>Thu, 16 Jul 2026 18:00:00 GMT</pubDate>
+      <description><![CDATA[<p>How cache hit rates change the unit economics of multi-step agent pipelines, with a simple cost model.</p>]]></description>
+    </item>
+    <item>
+      <title>Evaluating RAG systems without golden answers</title>
+      <link>https://example.com/blog/rag-eval</link>
+      <guid>https://example.com/blog/rag-eval</guid>
+      <pubDate>Thu, 16 Jul 2026 15:00:00 GMT</pubDate>
+      <description><![CDATA[<p>Practical run-log auditing techniques for RAG pipelines when you have no labeled data: abstention analysis, retrieval overlap, and answer stability checks.</p>]]></description>
+    </item>
+    <item>
+      <title>小さく始めるエージェント評価</title>
+      <link>https://example.com/blog/agent-eval-ja</link>
+      <guid>https://example.com/blog/agent-eval-ja</guid>
+      <pubDate>Thu, 16 Jul 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<p>10件の固定タスクから始めるエージェント評価の運用メモ。</p>]]></description>
+    </item>
+  </channel>
+</rss>
