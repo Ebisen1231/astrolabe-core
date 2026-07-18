@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import Connection
 
-from astrolabe import render
+from astrolabe import render, render_html
 from astrolabe.collect import arxiv, dedupe, rss
 from astrolabe.config import Config
 from astrolabe.ledger import derive, events, store
@@ -24,6 +24,9 @@ class MorningOutcome:
     report_text: str
     date: str
     meta: dict
+    topics: list[dict]
+    map_delta_text: str
+    html_path: Path | None = None
 
 
 def collect_items(
@@ -66,6 +69,9 @@ def run_morning(
     budget: TokenBudget,
     top_k: int = 8,
     dry_run: bool = False,
+    html_output_dir: Path | None = None,
+    html_path_base: Path | None = None,
+    feedback_repository: str = render_html.DEFAULT_LEDGER_REPOSITORY,
     logger: logging.Logger | None = None,
 ) -> MorningOutcome:
     logger = logger or logging.getLogger("astrolabe.morning")
@@ -107,11 +113,37 @@ def run_morning(
             meta["edges"] = n_edges
 
     meta["usage"] = budget.summary()
-    store.save_daily_report(conn, today, {"topics": topics, "meta": meta}, map_delta)
+    html_path: Path | None = None
+    stored_html_path: str | None = None
+    if html_output_dir is not None:
+        html_path = render_html.write_html_report(
+            html_output_dir,
+            today,
+            topics,
+            map_delta,
+            store.list_concepts(conn),
+            store.list_edges(conn),
+            repository=feedback_repository,
+        )
+        stored_path = html_path
+        if html_path_base is not None and html_path.is_relative_to(html_path_base):
+            stored_path = html_path.relative_to(html_path_base)
+        stored_html_path = str(stored_path)
+        meta["html_path"] = stored_html_path
+    store.save_daily_report(
+        conn,
+        today,
+        {"topics": topics, "meta": meta},
+        map_delta,
+        stored_html_path,
+    )
     return MorningOutcome(
         report_text=render.render_report(today, topics, map_delta, meta),
         date=today,
         meta=meta,
+        topics=topics,
+        map_delta_text=map_delta,
+        html_path=html_path,
     )
 
 

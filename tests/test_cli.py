@@ -1,6 +1,7 @@
 """CLIの受け入れ条件に対応するテスト(typer CliRunner、すべてオフライン)。"""
 
 import contextlib
+import re
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -88,7 +89,12 @@ def test_interview_requires_initialized_ledger(tmp_path, monkeypatch):
 
 def test_morning_dry_run_never_touches_real_ledger(tmp_path, monkeypatch):
     # 実台帳パスを設定していても、dry-run はそれを開かない・作らない
-    real_ledger = tmp_path / "real-ledger.db"
+    ledger_root = tmp_path / "ledger"
+    real_ledger = ledger_root / "real-ledger.db"
+    real_reports = ledger_root / "reports"
+    real_reports.mkdir(parents=True)
+    sentinel = real_reports / "do-not-touch.txt"
+    sentinel.write_text("unchanged", encoding="utf-8")
     monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(real_ledger))
     result = runner.invoke(
         app, ["morning", "--dry-run", "--fixtures-dir", str(FIXTURES_DIR)]
@@ -98,6 +104,14 @@ def test_morning_dry_run_never_touches_real_ledger(tmp_path, monkeypatch):
     assert "[dry-run]" in result.output
     assert "検証器つきRAG" in result.output
     assert not real_ledger.exists()
+    assert list(real_reports.iterdir()) == [sentinel]
+    assert sentinel.read_text(encoding="utf-8") == "unchanged"
+
+    match = re.search(r"^HTML: (.+)$", result.output, flags=re.MULTILINE)
+    assert match is not None
+    html_path = Path(match.group(1).strip())
+    assert html_path.exists()
+    assert real_reports not in html_path.parents
 
 
 def test_morning_dry_run_needs_no_env():

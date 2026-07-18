@@ -21,6 +21,7 @@ DEFAULT_RSS_FEEDS: tuple[str, ...] = (
     "https://huggingface.co/blog/feed.xml",
     "https://bair.berkeley.edu/blog/feed.xml",
 )
+DEFAULT_LEDGER_REPOSITORY = "Ebisen1231/astrolabe-ledger"
 
 
 class ConfigError(Exception):
@@ -38,6 +39,7 @@ class Config:
     cache_dir: Path
     max_mini_tokens: int
     max_flagship_tokens: int
+    ledger_repository: str
 
 
 def _int_env(env: Mapping[str, str], name: str, default: int) -> int:
@@ -108,5 +110,9 @@ def load_config(
         max_mini_tokens=_int_env(env, "ASTROLABE_MAX_MINI_TOKENS", DEFAULT_MAX_MINI_TOKENS),
         max_flagship_tokens=_int_env(
             env, "ASTROLABE_MAX_FLAGSHIP_TOKENS", DEFAULT_MAX_FLAGSHIP_TOKENS
+        ),
+        ledger_repository=(
+            env.get("ASTROLABE_LEDGER_REPOSITORY", "").strip()
+            or DEFAULT_LEDGER_REPOSITORY
         ),
     )

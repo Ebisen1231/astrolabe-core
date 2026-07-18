@@ -12,13 +12,21 @@ from astrolabe.render import render_report
 TODAY = "2026-07-18"
 
 
-def _run(ledger, fixtures_dir, caps=None):
+def _run(ledger, fixtures_dir, caps=None, html_output_dir=None):
     config = load_config(env={})
     budget = TokenBudget(caps or {"mini": 500_000, "flagship": 70_000})
     llm = FixtureLLM(fixtures_dir, budget)
     items = collect_items(config, offline_dir=fixtures_dir)
     outcome = run_morning(
-        ledger, llm, items, today=TODAY, budget=budget, top_k=8, dry_run=True
+        ledger,
+        llm,
+        items,
+        today=TODAY,
+        budget=budget,
+        top_k=8,
+        dry_run=True,
+        html_output_dir=html_output_dir,
+        html_path_base=html_output_dir,
     )
     return outcome
 
@@ -60,6 +68,17 @@ def test_morning_end_to_end(ledger, fixtures_dir):
     # 報告アーカイブ
     row = ledger.execute("SELECT date FROM daily_reports").fetchone()
     assert row["date"] == TODAY
+
+
+def test_morning_writes_html_and_records_relative_path(ledger, fixtures_dir, tmp_path):
+    html_dir = tmp_path / "reports"
+    outcome = _run(ledger, fixtures_dir, html_output_dir=html_dir)
+    assert outcome.html_path == html_dir / f"{TODAY}.html"
+    assert outcome.html_path.exists()
+    row = ledger.execute(
+        "SELECT html_path FROM daily_reports WHERE date = ?", (TODAY,)
+    ).fetchone()
+    assert row["html_path"] == f"{TODAY}.html"
 
 
 def test_second_run_dedupes_reported_items(ledger, fixtures_dir):

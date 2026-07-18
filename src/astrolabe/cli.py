@@ -22,7 +22,7 @@ from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, clas
 from astrolabe.llm.fixtures import FixtureLLM
 from astrolabe.pipeline import morning as morning_mod
 
-app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M0)")
+app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M1)")
 log = logging.getLogger("astrolabe")
 
 
@@ -189,6 +189,7 @@ def morning(
         config = _load_config_or_fail()  # dry-run は何も必須にしない
         budget = _make_budget(config, max_mini_tokens, max_flagship_tokens)
         typer.secho(f"[dry-run] fixtures={fdir} / 一時DBで実行、台帳・APIに触れない", err=True)
+        html_dir = Path(tempfile.mkdtemp(prefix="astrolabe-dryrun-html-"))
         with tempfile.TemporaryDirectory(prefix="astrolabe-dryrun-") as tmp:
             conn = db.init_db(Path(tmp) / "ledger.db")
             llm = FixtureLLM(fdir, budget)
@@ -196,10 +197,13 @@ def morning(
             items = morning_mod.collect_items(config, offline_dir=fdir, logger=log)
             outcome = morning_mod.run_morning(
                 conn, llm, items, today=today, budget=budget,
-                top_k=top_k, dry_run=True, logger=log,
+                top_k=top_k, dry_run=True, html_output_dir=html_dir,
+                html_path_base=html_dir, feedback_repository=config.ledger_repository,
+                logger=log,
             )
             conn.close()
         typer.echo(outcome.report_text)
+        typer.echo(f"HTML: {outcome.html_path}")
         return
 
     config = _load_config_or_fail(require_ledger=True, require_api=True)
@@ -214,8 +218,11 @@ def morning(
     _run_canaries(llm)
     try:
         items = morning_mod.collect_items(config, arxiv_max=arxiv_max, logger=log)
+        ledger_root = Path(config.ledger_path).parent
         outcome = morning_mod.run_morning(
-            conn, llm, items, today=today, budget=budget, top_k=top_k, logger=log
+            conn, llm, items, today=today, budget=budget, top_k=top_k,
+            html_output_dir=ledger_root / "reports", html_path_base=ledger_root,
+            feedback_repository=config.ledger_repository, logger=log,
         )
     except FatalLLMError as e:
         _fail(f"致命的エラーで中断。台帳へは未反映: {e}", 1)
@@ -226,6 +233,7 @@ def morning(
     finally:
         conn.close()
     typer.echo(outcome.report_text)
+    typer.echo(f"HTML: {outcome.html_path}")
 
 
 @app.command()

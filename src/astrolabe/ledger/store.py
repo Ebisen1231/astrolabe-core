@@ -69,13 +69,17 @@ def record_interview(
 
 
 def save_daily_report(
-    conn: sqlite3.Connection, date: str, items: dict, map_delta_text: str
+    conn: sqlite3.Connection,
+    date: str,
+    items: dict,
+    map_delta_text: str,
+    html_path: str | None = None,
 ) -> None:
     with conn:
         conn.execute(
             "INSERT OR REPLACE INTO daily_reports(date, items, map_delta_text, html_path)"
-            " VALUES(?, ?, ?, NULL)",
-            (date, json.dumps(items, ensure_ascii=False), map_delta_text),
+            " VALUES(?, ?, ?, ?)",
+            (date, json.dumps(items, ensure_ascii=False), map_delta_text, html_path),
         )
 
 
@@ -90,4 +94,36 @@ def get_daily_report(conn: sqlite3.Connection, date: str | None = None) -> dict 
         "date": row["date"],
         "items": json.loads(row["items"]),
         "map_delta_text": row["map_delta_text"],
+        "html_path": row["html_path"],
     }
+
+
+def list_concepts(conn: sqlite3.Connection) -> list[dict]:
+    """HTML/通知向けに導出済みconceptsを安定順で読み出す。"""
+    rows = conn.execute(
+        "SELECT id, name, kind, status, confidence, summary, source_urls,"
+        " first_seen, last_touched FROM concepts ORDER BY id"
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "kind": row["kind"],
+            "status": row["status"],
+            "confidence": row["confidence"],
+            "summary": row["summary"],
+            "source_urls": json.loads(row["source_urls"] or "[]"),
+            "first_seen": row["first_seen"],
+            "last_touched": row["last_touched"],
+        }
+        for row in rows
+    ]
+
+
+def list_edges(conn: sqlite3.Connection) -> list[dict]:
+    """HTML向けに導出済みedgesを安定順で読み出す。"""
+    rows = conn.execute(
+        "SELECT src, dst, type, weight, created_by, created_at FROM edges"
+        " ORDER BY src, dst, type"
+    ).fetchall()
+    return [dict(row) for row in rows]
