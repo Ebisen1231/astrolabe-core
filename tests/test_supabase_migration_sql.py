@@ -2,13 +2,15 @@ from pathlib import Path
 
 
 def _migration_sql() -> str:
-    path = (
+    migration_dir = (
         Path(__file__).resolve().parent.parent
         / "supabase"
         / "migrations"
-        / "202607190001_m3_ledger.sql"
     )
-    return path.read_text(encoding="utf-8").lower()
+    return "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(migration_dir.glob("*.sql"))
+    ).lower()
 
 
 def test_migration_defines_all_m3_tables_and_rpc():
@@ -47,3 +49,16 @@ def test_import_rpc_adjusts_identity_sequence():
     sql = _migration_sql()
     assert "pg_get_serial_sequence('public.events', 'id')" in sql
     assert "setval" in sql
+
+
+def test_derived_replacement_uses_safe_update_compatible_delete():
+    latest = (
+        Path(__file__).resolve().parent.parent
+        / "supabase"
+        / "migrations"
+        / "202607190002_fix_derived_replace.sql"
+    ).read_text(encoding="utf-8").lower()
+    assert "delete from public.edges where src is not null" in latest
+    assert "delete from public.concepts where id is not null" in latest
+    assert "delete from public.edges;" not in latest
+    assert "delete from public.concepts;" not in latest
