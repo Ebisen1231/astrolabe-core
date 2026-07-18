@@ -82,9 +82,12 @@ jobs:
           ASTROLABE_CACHE_DIR: ${{ runner.temp }}/astrolabe-cache
         run: core/.venv/bin/astrolabe morning
 
-      - name: Persist ledger and HTML report
+      - name: Export UI data
+        run: core/.venv/bin/astrolabe export
+
+      - name: Persist ledger, HTML, and UI exports
         run: |
-          git add -- astrolabe.db reports/
+          git add -- astrolabe.db reports/ exports/
           if ! git diff --cached --quiet; then
             git commit -m "chore: morning report ${GITHUB_RUN_ID}"
             git push

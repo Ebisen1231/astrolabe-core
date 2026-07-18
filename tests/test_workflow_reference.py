@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def test_ledger_workflow_reference_has_m1_schedule_and_minimal_permissions():
+def test_ledger_workflow_reference_has_m2_export_and_minimal_permissions():
     path = Path(__file__).resolve().parent.parent / "docs" / "morning.workflow.yml"
     text = path.read_text(encoding="utf-8")
     assert text.startswith("# REFERENCE COPY ONLY")
@@ -14,6 +14,8 @@ def test_ledger_workflow_reference_has_m1_schedule_and_minimal_permissions():
     assert "repository: Ebisen1231/astrolabe-core" in text
     assert "feedback-import" in text
     assert "feedback-close" in text
+    assert "astrolabe export" in text
+    assert "astrolabe.db reports/ exports/" in text
     assert "notify-discord" in text
     assert "LEDGER_ISSUES_TOKEN" not in text
     assert "DEPLOY_KEY" not in text
