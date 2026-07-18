@@ -3,11 +3,12 @@
 import contextlib
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from typer.testing import CliRunner
 
-from astrolabe.cli import app
+from astrolabe.cli import _resolve_report_date, app
 from astrolabe.ledger import db, store
 from astrolabe.ledger.backend import LedgerBackendError
 
@@ -87,6 +88,17 @@ def test_interview_requires_initialized_ledger(tmp_path, monkeypatch):
 
 
 # --- morning --------------------------------------------------------------
+
+
+def test_default_report_date_uses_jst_at_utc_date_boundary():
+    assert (
+        _resolve_report_date(None, now=datetime(2026, 7, 18, 21, 30, tzinfo=UTC))
+        == "2026-07-19"
+    )
+    assert (
+        _resolve_report_date(None, now=datetime(2026, 7, 18, 14, 59, tzinfo=UTC))
+        == "2026-07-18"
+    )
 
 
 def test_morning_dry_run_never_touches_real_ledger(tmp_path, monkeypatch):

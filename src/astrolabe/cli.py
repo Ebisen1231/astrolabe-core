@@ -9,9 +9,11 @@ import json
 import logging
 import sys
 import tempfile
+from datetime import UTC, datetime
 from datetime import date as date_type
 from pathlib import Path
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import typer
 
@@ -36,6 +38,7 @@ from astrolabe.pipeline import morning as morning_mod
 
 app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M3)")
 log = logging.getLogger("astrolabe")
+REPORT_TIME_ZONE = ZoneInfo("Asia/Tokyo")
 
 
 @app.callback()
@@ -83,9 +86,12 @@ def _artifact_root_or_fail(config: Config) -> Path:
     raise AssertionError  # unreachable
 
 
-def _resolve_report_date(value: str | None) -> str:
+def _resolve_report_date(value: str | None, *, now: datetime | None = None) -> str:
     if value is None:
-        return date_type.today().isoformat()
+        instant = now or datetime.now(UTC)
+        if instant.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+        return instant.astimezone(REPORT_TIME_ZONE).date().isoformat()
     try:
         parsed = date_type.fromisoformat(value)
     except ValueError:
