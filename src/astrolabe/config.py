@@ -41,6 +41,7 @@ class Config:
     max_flagship_tokens: int
     ledger_repository: str
     github_token: str | None
+    discord_webhook_url: str | None
 
 
 def _int_env(env: Mapping[str, str], name: str, default: int) -> int:
@@ -117,4 +118,5 @@ def load_config(
             or DEFAULT_LEDGER_REPOSITORY
         ),
         github_token=env.get("GITHUB_TOKEN", "").strip() or None,
+        discord_webhook_url=env.get("DISCORD_WEBHOOK_URL", "").strip() or None,
     )

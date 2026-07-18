@@ -1,0 +1,96 @@
+# REFERENCE COPY ONLY — 実体はprivateの Ebisen1231/astrolabe-ledger 側に置く。
+# core側ではポートフォリオ用に構成を公開するだけで、このファイル自体は実行されない。
+name: Astrolabe morning
+
+on:
+  schedule:
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: astrolabe-morning
+  cancel-in-progress: false
+
+jobs:
+  morning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ASTROLABE_LEDGER_PATH: ${{ github.workspace }}/astrolabe.db
+      ASTROLABE_LEDGER_REPOSITORY: Ebisen1231/astrolabe-ledger
+      ASTROLABE_MODEL_MINI: gpt-5.4-nano # 無料枠対象の変更時はここを更新
+      ASTROLABE_MODEL_FLAGSHIP: gpt-5.6-terra # 無料枠対象の変更時はここを更新
+      ASTROLABE_CACHE_DIR: ${{ runner.temp }}/astrolabe-cache
+
+    steps:
+      - name: Checkout private ledger
+        uses: actions/checkout@v4
+
+      - name: Checkout public core
+        uses: actions/checkout@v4
+        with:
+          repository: Ebisen1231/astrolabe-core
+          path: core
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install core
+        working-directory: core
+        run: uv sync --frozen
+
+      - name: Import open feedback issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          core/.venv/bin/astrolabe feedback-import
+          --receipt "${RUNNER_TEMP}/feedback-issues.json"
+
+      - name: Persist imported feedback
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- astrolabe.db
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: import feedback ${GITHUB_RUN_ID}"
+            git push
+          fi
+
+      - name: Close imported feedback issues
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          core/.venv/bin/astrolabe feedback-close
+          --receipt "${RUNNER_TEMP}/feedback-issues.json"
+
+      - name: Run morning pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: core/.venv/bin/astrolabe morning
+
+      - name: Persist ledger and HTML report
+        run: |
+          git add -- astrolabe.db reports/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: morning report ${GITHUB_RUN_ID}"
+            git push
+          fi
+
+      - name: Notify Discord
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: core/.venv/bin/astrolabe notify-discord

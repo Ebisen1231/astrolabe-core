@@ -27,6 +27,7 @@ from astrolabe.ledger import db, store
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, classify_error
 from astrolabe.llm.fixtures import FixtureLLM
+from astrolabe.notify_discord import send_discord_report
 from astrolabe.pipeline import morning as morning_mod
 
 app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M1)")
@@ -301,6 +302,36 @@ def feedback_close(
     finally:
         client.close()
     typer.echo(f"フィードバックclose: 成功 {result.closed} / 失敗 {result.close_failed}")
+
+
+@app.command("notify-discord", hidden=True)
+def notify_discord() -> None:
+    """Actions用: 最新HTML報告をDiscordへ通知する。失敗はwarningで終了する。"""
+    config = _load_config_or_fail(require_ledger=True)
+    conn = _open_ledger_or_fail(config)
+    try:
+        report_row = store.get_daily_report(conn)
+    finally:
+        conn.close()
+    if report_row is None:
+        log.warning("日次報告がないためDiscord通知をスキップ")
+        return
+    stored_path = report_row.get("html_path")
+    if not stored_path:
+        log.warning("日次報告にhtml_pathがないためDiscord通知をスキップ")
+        return
+    ledger_root = Path(config.ledger_path).parent.resolve()
+    html_path = (ledger_root / stored_path).resolve()
+    if not html_path.is_relative_to(ledger_root):
+        log.warning("html_pathがledger外を指すためDiscord通知をスキップ")
+        return
+    if send_discord_report(
+        config.discord_webhook_url or "",
+        report_row,
+        html_path,
+        logger=log,
+    ):
+        typer.echo(f"Discord通知完了: {html_path.name}")
 
 
 @app.command()
