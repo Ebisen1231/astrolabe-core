@@ -121,3 +121,22 @@ def test_preserved_event_import_uses_rpc_and_keeps_ids():
         ledger.close()
     assert seen["path"].endswith("/rpc/astrolabe_import_events")
     assert b"secret-not-for-output" not in seen["body"]
+
+
+def test_supabase_url_accepts_existing_rest_v1_suffix():
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(200, json=[], request=request)
+
+    ledger = SupabaseLedger(
+        "https://example.supabase.co/rest/v1",
+        "secret-not-for-output",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        ledger.load_events()
+    finally:
+        ledger.close()
+    assert paths == ["/rest/v1/events"]

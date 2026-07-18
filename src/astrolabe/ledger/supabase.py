@@ -57,8 +57,11 @@ class SupabaseLedger:
         sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sleeper = sleeper
+        api_root = url.rstrip("/")
+        if not api_root.endswith("/rest/v1"):
+            api_root += "/rest/v1"
         self._client = httpx.Client(
-            base_url=url.rstrip("/") + "/rest/v1",
+            base_url=api_root,
             timeout=timeout,
             transport=transport,
             headers={

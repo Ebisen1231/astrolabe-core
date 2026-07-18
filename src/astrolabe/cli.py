@@ -41,6 +41,8 @@ log = logging.getLogger("astrolabe")
 @app.callback()
 def _setup() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stderr)
+    # httpxのINFOログはSupabase URLを含むため、秘密情報の運用方針に従い抑止する。
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def _fail(message: str, code: int) -> None:
