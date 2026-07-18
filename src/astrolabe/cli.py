@@ -25,6 +25,8 @@ from astrolabe.github_feedback import (
 )
 from astrolabe.ledger import db, store
 from astrolabe.ledger.backend import LedgerBackendError
+from astrolabe.ledger.migration import MigrationVerificationError, migrate_sqlite_to_supabase
+from astrolabe.ledger.snapshot import SnapshotError, restore_sqlite, write_events_jsonl
 from astrolabe.ledger.supabase import SupabaseLedger
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, classify_error
@@ -307,6 +309,69 @@ def export_data(
         conn.close()
     typer.echo(
         f"Export完了: {result.output_dir} / reports {len(result.report_dates)} / "
+        f"concepts {result.concept_count} / edges {result.edge_count}"
+    )
+
+
+@app.command("migrate-to-supabase")
+def migrate_to_supabase() -> None:
+    """SQLite一次台帳をSupabaseへ冪等移行し、再導出の完全一致を検証する。"""
+    config = _load_config_or_fail(require_sqlite=True, require_supabase=True)
+    assert config.ledger_path is not None
+    assert config.supabase_url is not None
+    assert config.supabase_service_role_key is not None
+    try:
+        source = db.open_ledger(config.ledger_path)
+    except db.LedgerError as exc:
+        _fail(str(exc), 2)
+    target = SupabaseLedger(config.supabase_url, config.supabase_service_role_key)
+    try:
+        result = migrate_sqlite_to_supabase(source, target)
+    except (LedgerBackendError, MigrationVerificationError) as exc:
+        _fail(f"Supabase移行検証に失敗: {exc}", 2)
+    finally:
+        source.close()
+        target.close()
+    typer.echo(
+        "Supabase移行検証: 合格 / "
+        f"events {result.event_count} / concepts {result.concept_count} / "
+        f"edges {result.edge_count} / tasks {result.task_count} / "
+        f"reports {result.report_count}"
+    )
+
+
+@app.command("snapshot")
+def snapshot(
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="出力先。省略時はartifact root/snapshots/events.jsonl"),
+    ] = None,
+) -> None:
+    """選択中バックエンドのeventsを決定的JSONLへ書き出す。"""
+    config = _load_config_or_fail(require_ledger=True)
+    output_path = out or _artifact_root_or_fail(config) / "snapshots" / "events.jsonl"
+    ledger = _open_ledger_or_fail(config)
+    try:
+        result = write_events_jsonl(ledger, output_path)
+    except (LedgerBackendError, SnapshotError) as exc:
+        _fail(f"snapshotに失敗: {exc}", 2)
+    finally:
+        ledger.close()
+    typer.echo(f"Snapshot完了: {result.path} / events {result.event_count}")
+
+
+@app.command("restore-snapshot")
+def restore_snapshot(
+    snapshot_file: Annotated[Path, typer.Argument(help="events.jsonlのパス")],
+    out: Annotated[Path, typer.Option("--out", help="新規SQLiteファイルの保存先")],
+) -> None:
+    """events JSONLからローカルSQLite台帳を新規再構築する。"""
+    try:
+        result = restore_sqlite(snapshot_file, out)
+    except (SnapshotError, LedgerBackendError) as exc:
+        _fail(f"snapshot復元に失敗: {exc}", 2)
+    typer.echo(
+        f"SQLite復元完了: {result.path} / events {result.event_count} / "
         f"concepts {result.concept_count} / edges {result.edge_count}"
     )
 
