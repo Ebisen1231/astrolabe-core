@@ -362,3 +362,21 @@ grant execute on function public.astrolabe_import_events(jsonb) to service_role;
 grant execute on function public.astrolabe_replace_derived(jsonb, jsonb) to service_role;
 grant execute on function public.astrolabe_record_interview(jsonb, jsonb) to service_role;
 grant execute on function public.astrolabe_import_state(jsonb, jsonb, jsonb) to service_role;
+
+-- 多層防御: service_role 以外(anon / authenticated)からの台帳アクセスを全面遮断する。
+-- RLSは有効化のみでポリシーを作らない(=service_role以外は全拒否)。service_role は
+-- BYPASSRLS を持つため運用には影響しない。M3③でUIを公開すると anon キーがWebバンドルに
+-- 埋め込まれるため、このブロックがないと private 台帳が全公開になる。
+alter table public.events enable row level security;
+alter table public.concepts enable row level security;
+alter table public.edges enable row level security;
+alter table public.tasks enable row level security;
+alter table public.profile enable row level security;
+alter table public.daily_reports enable row level security;
+alter table public.llm_usage enable row level security;
+
+revoke all on public.events, public.concepts, public.edges, public.tasks,
+  public.profile, public.daily_reports, public.llm_usage
+from public, anon, authenticated;
+revoke usage, select on sequence public.events_id_seq from public, anon, authenticated;
+revoke usage, select on sequence public.tasks_id_seq from public, anon, authenticated;
