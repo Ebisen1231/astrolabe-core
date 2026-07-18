@@ -1,0 +1,35 @@
+{
+  "date": "2026-07-18",
+  "items": {
+    "topics": [
+      {
+        "name": "検証器つきRAG(Self-Correcting RAG)",
+        "summary": "生成した回答を軽量な検証器で採点し、確信度が低いときだけ再検索・再生成するRAGの改良系。追加コスト1コールで幻覚を大きく減らせるのが売り。",
+        "source_urls": [
+          "http://arxiv.org/abs/2507.11001v1"
+        ]
+      },
+      {
+        "name": "リランキング(Reranking)",
+        "summary": "検索で取った候補を、より重い採点器で並べ替えて上位精度を稼ぐ工程。対比学習で失敗事例から負例を掘ると、コスト半分で精度が上がるという報告。",
+        "source_urls": [
+          "http://arxiv.org/abs/2507.11005v1",
+          "https://example.com/blog/reranking"
+        ]
+      }
+    ],
+    "meta": {
+      "usage": {
+        "mini": {
+          "used": 1200,
+          "cap": 500000
+        },
+        "flagship": {
+          "used": 340,
+          "cap": 70000
+        }
+      }
+    }
+  },
+  "map_delta_text": "今日はRAGの品質保証系に2ノード増え、既存のRAGノードに橋が架かった。"
+}

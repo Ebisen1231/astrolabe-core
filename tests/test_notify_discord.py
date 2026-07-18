@@ -1,33 +1,59 @@
 """Discord通知。MockTransportだけを使い、実webhookには触れない。"""
 
 import json
+from copy import deepcopy
 
 import httpx
 
-from astrolabe.notify_discord import build_discord_content, send_discord_report
-
-REPORT = {
-    "date": "2026-07-18",
-    "items": {
-        "topics": [{"name": "RAG"}, {"name": "エージェント評価"}],
-        "meta": {
-            "usage": {
-                "mini": {"used": 1200, "cap": 500000},
-                "flagship": {"used": 340, "cap": 70000},
-            }
-        },
-    },
-}
+from astrolabe.notify_discord import build_discord_embed, send_discord_report
 
 
-def test_build_discord_content_contains_titles_and_usage():
-    content = build_discord_content(REPORT)
-    assert "RAG / エージェント評価" in content
-    assert "mini 1,200/500,000 tokens" in content
-    assert "flagship 340/70,000 tokens" in content
+def load_report(fixtures_dir):
+    return json.loads((fixtures_dir / "discord_report.json").read_text(encoding="utf-8"))
 
 
-def test_send_discord_attaches_html(tmp_path):
+def test_build_discord_embed_uses_topic_fields_and_usage_footer(fixtures_dir):
+    report = load_report(fixtures_dir)
+    embed = build_discord_embed(report)
+
+    assert embed["title"] == "Astrolabe 朝の観測報告"
+    assert embed["description"].startswith("2026-07-18\n今日の変化: ")
+    assert [field["name"] for field in embed["fields"]] == [
+        "検証器つきRAG(Self-Correcting RAG)",
+        "リランキング(Reranking)",
+    ]
+    first_topic = report["items"]["topics"][0]
+    assert embed["fields"][0] == {
+        "name": first_topic["name"],
+        "value": first_topic["summary"][:100] + "\n" + first_topic["source_urls"][0],
+        "inline": False,
+    }
+    assert report["items"]["topics"][1]["source_urls"][1] not in embed["fields"][1]["value"]
+    assert embed["footer"]["text"] == (
+        "使用量: mini 1,200/500,000 tokens | flagship 340/70,000 tokens"
+    )
+
+
+def test_build_discord_embed_truncates_description_and_field(fixtures_dir):
+    report = deepcopy(load_report(fixtures_dir))
+    report["map_delta_text"] = "変" * 5000
+    topic = report["items"]["topics"][0]
+    topic["name"] = "題" * 300
+    topic["summary"] = "要" * 200
+    topic["source_urls"] = ["https://example.com/" + "u" * 1200]
+
+    embed = build_discord_embed(report)
+
+    assert len(embed["description"]) == 4096
+    assert embed["description"].endswith("…")
+    assert len(embed["fields"][0]["name"]) == 256
+    assert len(embed["fields"][0]["value"]) == 1024
+    assert embed["fields"][0]["value"].startswith("要" * 100 + "\nhttps://example.com/")
+    assert embed["fields"][0]["value"].endswith("…")
+
+
+def test_send_discord_attaches_html_with_embed(fixtures_dir, tmp_path):
+    report = load_report(fixtures_dir)
     html_path = tmp_path / "2026-07-18.html"
     html_path.write_text("<html>report</html>", encoding="utf-8")
     requests: list[bytes] = []
@@ -38,7 +64,7 @@ def test_send_discord_attaches_html(tmp_path):
 
     ok = send_discord_report(
         "https://discord.com/api/webhooks/test/token",
-        REPORT,
+        report,
         html_path,
         transport=httpx.MockTransport(handler),
         sleeper=lambda _: None,
@@ -48,13 +74,12 @@ def test_send_discord_attaches_html(tmp_path):
     body = requests[0]
     assert b"2026-07-18.html" in body
     assert b"<html>report</html>" in body
-    payload = json.dumps(
-        {"content": build_discord_content(REPORT)}, ensure_ascii=False
-    ).encode()
+    payload = json.dumps({"embeds": [build_discord_embed(report)]}, ensure_ascii=False).encode()
     assert payload in body
 
 
-def test_send_discord_failure_retries_once_and_returns_false(tmp_path):
+def test_send_discord_failure_retries_once_and_returns_false(fixtures_dir, tmp_path):
+    report = load_report(fixtures_dir)
     html_path = tmp_path / "report.html"
     html_path.write_text("report", encoding="utf-8")
     calls = 0
@@ -67,7 +92,7 @@ def test_send_discord_failure_retries_once_and_returns_false(tmp_path):
     assert (
         send_discord_report(
             "https://discord.com/api/webhooks/test/token",
-            REPORT,
+            report,
             html_path,
             transport=httpx.MockTransport(handler),
             sleeper=lambda _: None,
@@ -77,5 +102,6 @@ def test_send_discord_failure_retries_once_and_returns_false(tmp_path):
     assert calls == 2
 
 
-def test_missing_webhook_or_html_is_nonfatal(tmp_path):
-    assert send_discord_report("", REPORT, tmp_path / "missing.html") is False
+def test_missing_webhook_or_html_is_nonfatal(fixtures_dir, tmp_path):
+    report = load_report(fixtures_dir)
+    assert send_discord_report("", report, tmp_path / "missing.html") is False

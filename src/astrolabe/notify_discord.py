@@ -10,27 +10,69 @@ from pathlib import Path
 
 import httpx
 
+DESCRIPTION_LIMIT = 4096
+FIELD_NAME_LIMIT = 256
+FIELD_VALUE_LIMIT = 1024
+FOOTER_LIMIT = 2048
+SUMMARY_LIMIT = 100
+MAX_FIELDS = 25
 
-def build_discord_content(report: dict) -> str:
-    """Discordのcontent上限内で題目とトークン使用量を整形する。"""
-    topics = report.get("items", {}).get("topics", [])
+
+def _truncate(text: str, limit: int) -> str:
+    """Discordの各文字数上限内へ、末尾の省略記号を含めて収める。"""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
+
+def _usage_text(report: dict) -> str:
+    """embed footer用のトークン使用量を決定的に整形する。"""
     meta = report.get("items", {}).get("meta", {})
     usage = meta.get("usage", {})
-    lines = [f"Astrolabe 朝の観測報告 — {report.get('date', '')}"]
-    if topics:
-        lines.append("今日の提案: " + " / ".join(str(t.get("name", "")) for t in topics[:5]))
-    else:
-        lines.append("今日の提案: 新規トピックなし")
-    usage_parts = []
+    parts = []
     for key in ("mini", "flagship"):
         values = usage.get(key, {})
         if values:
-            usage_parts.append(
+            parts.append(
                 f"{key} {int(values.get('used', 0)):,}/{int(values.get('cap', 0)):,} tokens"
             )
-    if usage_parts:
-        lines.append("使用量: " + " | ".join(usage_parts))
-    return "\n".join(lines)[:1900]
+    return "使用量: " + (" | ".join(parts) if parts else "記録なし")
+
+
+def build_discord_embed(report: dict) -> dict:
+    """日次報告をDiscord embedの上限内で決定的に整形する。"""
+    topics = report.get("items", {}).get("topics", [])
+    date = str(report.get("date", ""))
+    map_delta = str(report.get("map_delta_text", ""))
+    description_parts = [date] if date else []
+    if map_delta:
+        description_parts.append(f"今日の変化: {map_delta}")
+    if not topics:
+        description_parts.append("今日の提案: 新規トピックなし")
+
+    fields = []
+    for topic in topics[:MAX_FIELDS]:
+        name = _truncate(str(topic.get("name", "無題")) or "無題", FIELD_NAME_LIMIT)
+        summary = str(topic.get("summary", ""))[:SUMMARY_LIMIT]
+        source_urls = topic.get("source_urls", [])
+        source_url = str(source_urls[0]) if isinstance(source_urls, list) and source_urls else ""
+        value = summary
+        if source_url:
+            value = f"{value}\n{source_url}" if value else source_url
+        fields.append(
+            {
+                "name": name,
+                "value": _truncate(value or "要約なし", FIELD_VALUE_LIMIT),
+                "inline": False,
+            }
+        )
+
+    return {
+        "title": "Astrolabe 朝の観測報告",
+        "description": _truncate("\n".join(description_parts), DESCRIPTION_LIMIT),
+        "fields": fields,
+        "footer": {"text": _truncate(_usage_text(report), FOOTER_LIMIT)},
+    }
 
 
 def send_discord_report(
@@ -52,7 +94,7 @@ def send_discord_report(
         logger.warning("Discord添付HTMLが見つからないため通知をスキップ: %s", html_path.name)
         return False
 
-    payload = json.dumps({"content": build_discord_content(report)}, ensure_ascii=False)
+    payload = json.dumps({"embeds": [build_discord_embed(report)]}, ensure_ascii=False)
     last_error: Exception | None = None
     with httpx.Client(timeout=timeout, transport=transport) as client:
         for attempt in range(2):
