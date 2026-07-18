@@ -26,6 +26,37 @@ def test_ledger_required_without_fallback():
         load_config(require_ledger=True, env={})
 
 
+def test_supabase_backend_requires_both_credentials_without_sqlite_fallback():
+    with pytest.raises(ConfigError) as exc:
+        load_config(require_ledger=True, env={"ASTROLABE_BACKEND": "supabase"})
+    message = str(exc.value)
+    assert "SUPABASE_URL" in message
+    assert "SUPABASE_SERVICE_ROLE_KEY" in message
+    assert "ASTROLABE_LEDGER_PATH" not in message
+
+
+def test_supabase_backend_configuration():
+    config = load_config(
+        require_ledger=True,
+        env={
+            "ASTROLABE_BACKEND": "supabase",
+            "SUPABASE_URL": "https://project.supabase.co",
+            "SUPABASE_SERVICE_ROLE_KEY": "test-service-role-key",
+            "ASTROLABE_ARTIFACT_ROOT": "/tmp/artifacts",
+            "GITHUB_RUN_ID": "123",
+        },
+    )
+    assert config.backend == "supabase"
+    assert config.ledger_path is None
+    assert config.artifact_root == Path("/tmp/artifacts")
+    assert config.run_id == "123"
+
+
+def test_invalid_backend_is_rejected():
+    with pytest.raises(ConfigError, match="ASTROLABE_BACKEND"):
+        load_config(env={"ASTROLABE_BACKEND": "memory"})
+
+
 def test_api_required_lists_all_missing():
     with pytest.raises(ConfigError) as exc:
         load_config(require_api=True, env={})

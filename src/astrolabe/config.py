@@ -30,7 +30,13 @@ class ConfigError(Exception):
 
 @dataclass(frozen=True)
 class Config:
+    backend: str
     ledger_path: Path | None
+    supabase_url: str | None
+    supabase_service_role_key: str | None
+    artifact_root: Path | None
+    allow_date_override: bool
+    run_id: str
     api_key: str | None
     model_mini: str | None
     model_flagship: str | None
@@ -61,6 +67,8 @@ def load_config(
     *,
     require_ledger: bool = False,
     require_api: bool = False,
+    require_sqlite: bool = False,
+    require_supabase: bool = False,
     env: Mapping[str, str] | None = None,
 ) -> Config:
     """環境変数を検証して Config を返す。
@@ -72,9 +80,22 @@ def load_config(
     env = os.environ if env is None else env
     missing: list[str] = []
 
+    backend = env.get("ASTROLABE_BACKEND", "sqlite").strip().lower() or "sqlite"
+    if backend not in ("sqlite", "supabase"):
+        raise ConfigError("ASTROLABE_BACKEND は sqlite または supabase を指定する")
+
     ledger_raw = env.get("ASTROLABE_LEDGER_PATH", "").strip()
-    if require_ledger and not ledger_raw:
+    supabase_url = env.get("SUPABASE_URL", "").strip() or None
+    supabase_key = env.get("SUPABASE_SERVICE_ROLE_KEY", "").strip() or None
+    needs_sqlite = require_sqlite or (require_ledger and backend == "sqlite")
+    needs_supabase = require_supabase or (require_ledger and backend == "supabase")
+    if needs_sqlite and not ledger_raw:
         missing.append("ASTROLABE_LEDGER_PATH")
+    if needs_supabase:
+        if not supabase_url:
+            missing.append("SUPABASE_URL")
+        if not supabase_key:
+            missing.append("SUPABASE_SERVICE_ROLE_KEY")
 
     api_key = env.get("OPENAI_API_KEY", "").strip() or None
     model_mini = env.get("ASTROLABE_MODEL_MINI", "").strip() or None
@@ -92,6 +113,9 @@ def load_config(
             "環境変数が未設定: " + ", ".join(missing) + "(暗黙のフォールバックは行わない)"
         )
 
+    if supabase_url and not supabase_url.startswith(("https://", "http://")):
+        raise ConfigError("SUPABASE_URL は http:// または https:// で始める")
+
     feeds_raw = env.get("ASTROLABE_RSS_FEEDS", "").strip()
     rss_feeds = (
         tuple(u.strip() for u in feeds_raw.split(",") if u.strip())
@@ -100,9 +124,16 @@ def load_config(
     )
     cache_raw = env.get("ASTROLABE_CACHE_DIR", "").strip()
     cache_dir = Path(cache_raw) if cache_raw else Path.home() / ".astrolabe" / "cache"
+    artifact_raw = env.get("ASTROLABE_ARTIFACT_ROOT", "").strip()
 
     return Config(
+        backend=backend,
         ledger_path=Path(ledger_raw) if ledger_raw else None,
+        supabase_url=supabase_url,
+        supabase_service_role_key=supabase_key,
+        artifact_root=Path(artifact_raw) if artifact_raw else None,
+        allow_date_override=env.get("ASTROLABE_ALLOW_DATE_OVERRIDE", "").strip() == "1",
+        run_id=env.get("GITHUB_RUN_ID", "").strip() or "local",
         api_key=api_key,
         model_mini=model_mini,
         model_flagship=model_flagship,

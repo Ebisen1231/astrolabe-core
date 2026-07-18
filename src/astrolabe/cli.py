@@ -24,6 +24,8 @@ from astrolabe.github_feedback import (
     sync_feedback,
 )
 from astrolabe.ledger import db, store
+from astrolabe.ledger.backend import LedgerBackendError
+from astrolabe.ledger.supabase import SupabaseLedger
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, classify_error
 from astrolabe.llm.fixtures import FixtureLLM
@@ -54,9 +56,27 @@ def _load_config_or_fail(**kwargs) -> Config:
 
 def _open_ledger_or_fail(config: Config):
     try:
+        if config.backend == "supabase":
+            assert config.supabase_url is not None
+            assert config.supabase_service_role_key is not None
+            return SupabaseLedger(config.supabase_url, config.supabase_service_role_key)
+        assert config.ledger_path is not None
         return db.open_ledger(config.ledger_path)
-    except db.LedgerError as e:
+    except (db.LedgerError, LedgerBackendError) as e:
         _fail(str(e), 2)
+
+
+def _artifact_root_or_fail(config: Config) -> Path:
+    if config.artifact_root is not None:
+        return config.artifact_root
+    if config.backend == "sqlite" and config.ledger_path is not None:
+        return config.ledger_path.parent
+    _fail(
+        "SupabaseバックエンドではASTROLABE_ARTIFACT_ROOTを設定する"
+        "(HTML・exports・snapshotの保存先)",
+        2,
+    )
+    raise AssertionError  # unreachable
 
 
 def _make_budget(config: Config, max_mini: int | None, max_flagship: int | None) -> TokenBudget:
@@ -115,7 +135,8 @@ def _feedback_client(config: Config) -> GitHubFeedbackClient | None:
 @app.command()
 def init() -> None:
     """台帳(SQLite)を初期化する。ASTROLABE_LEDGER_PATH 必須。"""
-    config = _load_config_or_fail(require_ledger=True)
+    config = _load_config_or_fail(require_sqlite=True)
+    assert config.ledger_path is not None
     conn = db.init_db(config.ledger_path)
     conn.close()
     typer.echo(f"台帳を初期化した: {config.ledger_path}")
@@ -249,11 +270,11 @@ def morning(
     _run_canaries(llm)
     try:
         items = morning_mod.collect_items(config, arxiv_max=arxiv_max, logger=log)
-        ledger_root = Path(config.ledger_path).parent
+        ledger_root = _artifact_root_or_fail(config)
         outcome = morning_mod.run_morning(
             conn, llm, items, today=today, budget=budget, top_k=top_k,
             html_output_dir=ledger_root / "reports", html_path_base=ledger_root,
-            feedback_repository=config.ledger_repository, logger=log,
+            feedback_repository=config.ledger_repository, run_id=config.run_id, logger=log,
         )
     except FatalLLMError as e:
         _fail(f"致命的エラーで中断。台帳へは未反映: {e}", 1)
@@ -276,8 +297,7 @@ def export_data(
 ) -> None:
     """台帳からM2 UI向けのバージョン付き静的JSONを生成する。"""
     config = _load_config_or_fail(require_ledger=True)
-    assert config.ledger_path is not None
-    output_dir = out or config.ledger_path.parent / "exports"
+    output_dir = out or _artifact_root_or_fail(config) / "exports"
     conn = _open_ledger_or_fail(config)
     try:
         result = exporter.export_ledger(conn, output_dir)
@@ -348,7 +368,7 @@ def notify_discord() -> None:
     if not stored_path:
         log.warning("日次報告にhtml_pathがないためDiscord通知をスキップ")
         return
-    ledger_root = Path(config.ledger_path).parent.resolve()
+    ledger_root = _artifact_root_or_fail(config).resolve()
     html_path = (ledger_root / stored_path).resolve()
     if not html_path.is_relative_to(ledger_root):
         log.warning("html_pathがledger外を指すためDiscord通知をスキップ")
