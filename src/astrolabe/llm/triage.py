@@ -38,12 +38,15 @@ SYSTEM_PROMPT = (
     "あなたは個人学習者のためのキュレーター。学習者プロファイルに照らして、"
     "各記事の「今日学ぶ価値」を0〜1で採点する。"
     "規準は §5.2 に従う: 新規性 × 興味適合 × 学習価値(前提概念がほぼ埋まっている"
-    "未知トピックを優先)− 既知ペナルティ。"
+    "未知トピックを優先)− 既知ペナルティ。learning_context の learned_concepts は"
+    "強い既知ペナルティ、recent_selected は興味適合の加点、recent_dismissed は減点に使う。"
     "全項目に対して id をそのまま返し、reason は日本語で30字以内。"
 )
 
 
-def build_user_prompt(items: list[dict], profile: dict) -> str:
+def build_user_prompt(
+    items: list[dict], profile: dict, learning_context: dict | None = None
+) -> str:
     """user プロンプトは機械可読なJSONにする(FixtureLLMもこれを解釈する)。"""
     return json.dumps(
         {
@@ -51,6 +54,12 @@ def build_user_prompt(items: list[dict], profile: dict) -> str:
                 "interests": profile.get("interests", {}),
                 "goals": profile.get("goals", ""),
                 "background": profile.get("background", ""),
+            },
+            "learning_context": learning_context
+            or {
+                "learned_concepts": [],
+                "recent_selected": [],
+                "recent_dismissed": [],
             },
             "items": [
                 {
@@ -71,6 +80,7 @@ def run_triage(
     items: list[dict],
     profile: dict,
     *,
+    learning_context: dict | None = None,
     chunk_size: int = 20,
     logger: logging.Logger | None = None,
 ) -> dict[str, dict]:
@@ -85,7 +95,7 @@ def run_triage(
                 TRIAGE_SCHEMA_NAME,
                 TRIAGE_SCHEMA,
                 SYSTEM_PROMPT,
-                build_user_prompt(chunk, profile),
+                build_user_prompt(chunk, profile, learning_context),
                 max_output_tokens=80 * len(chunk) + 200,
             )
         except (FatalLLMError, BudgetExceededError):

@@ -76,6 +76,7 @@ def run_morning(
 ) -> MorningOutcome:
     logger = logger or logging.getLogger("astrolabe.morning")
     profile = store.get_profile(conn)
+    learning_context = store.get_learning_context(conn)
     if not any(profile.get(k) for k in ("interests", "goals", "background")):
         logger.warning("プロファイル未登録。`astrolabe interview` で選別精度が上がる")
 
@@ -86,12 +87,23 @@ def run_morning(
         "after_dedupe": len(batch),
         "fresh": len(fresh),
         "dry_run": dry_run,
+        "personalization": {
+            "learned": len(learning_context["learned_concepts"]),
+            "recent_selected": len(learning_context["recent_selected"]),
+            "recent_dismissed": len(learning_context["recent_dismissed"]),
+        },
     }
 
     topics: list[dict] = []
     map_delta = ""
     if fresh:
-        scores = triage.run_triage(llm, fresh, profile, logger=logger)
+        scores = triage.run_triage(
+            llm,
+            fresh,
+            profile,
+            learning_context=learning_context,
+            logger=logger,
+        )
         ranked = sorted(
             (i for i in fresh if i["id"] in scores),
             key=lambda i: scores[i["id"]]["score"],

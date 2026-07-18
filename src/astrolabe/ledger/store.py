@@ -127,3 +127,38 @@ def list_edges(conn: sqlite3.Connection) -> list[dict]:
         " ORDER BY src, dst, type"
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_learning_context(conn: sqlite3.Connection, recent_limit: int = 20) -> dict:
+    """一次選別へ渡す既知・直近フィードバックを決定的に組み立てる。"""
+    learned = [
+        row["name"]
+        for row in conn.execute(
+            "SELECT name FROM concepts WHERE status = 'learned' ORDER BY name, id"
+        )
+    ]
+    rows = conn.execute(
+        "SELECT e.id, e.type, e.concept_id, e.payload, c.name"
+        " FROM events e LEFT JOIN concepts c ON c.id = e.concept_id"
+        " WHERE e.type IN ('selected', 'dismissed')"
+        " ORDER BY e.ts DESC, e.id DESC"
+    ).fetchall()
+    selected: list[str] = []
+    dismissed: list[str] = []
+    seen: dict[str, set[str]] = {"selected": set(), "dismissed": set()}
+    for row in rows:
+        bucket = row["type"]
+        target = selected if bucket == "selected" else dismissed
+        cid = row["concept_id"] or ""
+        if cid in seen[bucket] or len(target) >= recent_limit:
+            continue
+        payload = json.loads(row["payload"] or "{}")
+        name = str(row["name"] or payload.get("name") or cid)
+        if name:
+            target.append(name)
+            seen[bucket].add(cid)
+    return {
+        "learned_concepts": learned,
+        "recent_selected": selected,
+        "recent_dismissed": dismissed,
+    }
