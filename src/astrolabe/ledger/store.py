@@ -98,6 +98,20 @@ def get_daily_report(conn: sqlite3.Connection, date: str | None = None) -> dict 
     }
 
 
+def list_daily_reports(conn: sqlite3.Connection) -> list[dict]:
+    """export向けに全日次報告を古い順で返す。"""
+    rows = conn.execute("SELECT * FROM daily_reports ORDER BY date").fetchall()
+    return [
+        {
+            "date": row["date"],
+            "items": json.loads(row["items"]),
+            "map_delta_text": row["map_delta_text"],
+            "html_path": row["html_path"],
+        }
+        for row in rows
+    ]
+
+
 def list_concepts(conn: sqlite3.Connection) -> list[dict]:
     """HTML/通知向けに導出済みconceptsを安定順で読み出す。"""
     rows = conn.execute(
@@ -121,7 +135,7 @@ def list_concepts(conn: sqlite3.Connection) -> list[dict]:
 
 
 def list_edges(conn: sqlite3.Connection) -> list[dict]:
-    """HTML向けに導出済みedgesを安定順で読み出す。"""
+    """HTML/export向けに導出済みedgesを安定順で読み出す。"""
     rows = conn.execute(
         "SELECT src, dst, type, weight, created_by, created_at FROM edges"
         " ORDER BY src, dst, type"

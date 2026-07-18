@@ -65,7 +65,7 @@ def load_config(
 ) -> Config:
     """環境変数を検証して Config を返す。
 
-    require_ledger: 台帳を触るコマンド(init/interview/morning/report)で True。
+    require_ledger: 台帳を触るコマンド(init/interview/morning/export/report)で True。
     require_api: 実APIを呼ぶコマンド(morning 非dry-run / canary)で True。
     不足があれば ConfigError に不足変数名を列挙する。フォールバックはしない。
     """

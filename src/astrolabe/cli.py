@@ -1,4 +1,4 @@
-"""CLI: astrolabe init / interview / morning [--dry-run] / report / canary
+"""CLI: astrolabe init / interview / morning [--dry-run] / export / report / canary
 
 終了コード: 0=成功 / 1=致命的エラー・データなし / 2=設定不備または要調査 / 3=予算超過
 """
@@ -15,7 +15,7 @@ from typing import Annotated
 
 import typer
 
-from astrolabe import render
+from astrolabe import exporter, render
 from astrolabe.config import Config, ConfigError, load_config
 from astrolabe.github_feedback import (
     GitHubFeedbackClient,
@@ -30,7 +30,7 @@ from astrolabe.llm.fixtures import FixtureLLM
 from astrolabe.notify_discord import send_discord_report
 from astrolabe.pipeline import morning as morning_mod
 
-app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M1)")
+app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M2)")
 log = logging.getLogger("astrolabe")
 
 
@@ -204,7 +204,9 @@ def morning(
         config = _load_config_or_fail()  # dry-run は何も必須にしない
         budget = _make_budget(config, max_mini_tokens, max_flagship_tokens)
         typer.secho(f"[dry-run] fixtures={fdir} / 一時DBで実行、台帳・APIに触れない", err=True)
-        html_dir = Path(tempfile.mkdtemp(prefix="astrolabe-dryrun-html-"))
+        artifact_root = Path(tempfile.mkdtemp(prefix="astrolabe-dryrun-artifacts-"))
+        html_dir = artifact_root / "reports"
+        exports_dir = artifact_root / "exports"
         with tempfile.TemporaryDirectory(prefix="astrolabe-dryrun-") as tmp:
             conn = db.init_db(Path(tmp) / "ledger.db")
             llm = FixtureLLM(fdir, budget)
@@ -216,9 +218,11 @@ def morning(
                 html_path_base=html_dir, feedback_repository=config.ledger_repository,
                 logger=log,
             )
+            exporter.export_ledger(conn, exports_dir)
             conn.close()
         typer.echo(outcome.report_text)
         typer.echo(f"HTML: {outcome.html_path}")
+        typer.echo(f"Exports: {exports_dir}")
         return
 
     config = _load_config_or_fail(require_ledger=True, require_api=True)
@@ -261,6 +265,30 @@ def morning(
         conn.close()
     typer.echo(outcome.report_text)
     typer.echo(f"HTML: {outcome.html_path}")
+
+
+@app.command("export")
+def export_data(
+    out: Annotated[
+        Path | None,
+        typer.Option("--out", help="出力先。省略時は台帳と同じディレクトリのexports/"),
+    ] = None,
+) -> None:
+    """台帳からM2 UI向けのバージョン付き静的JSONを生成する。"""
+    config = _load_config_or_fail(require_ledger=True)
+    assert config.ledger_path is not None
+    output_dir = out or config.ledger_path.parent / "exports"
+    conn = _open_ledger_or_fail(config)
+    try:
+        result = exporter.export_ledger(conn, output_dir)
+    except exporter.ExportError as exc:
+        _fail(f"exportに失敗: {exc}", 2)
+    finally:
+        conn.close()
+    typer.echo(
+        f"Export完了: {result.output_dir} / reports {len(result.report_dates)} / "
+        f"concepts {result.concept_count} / edges {result.edge_count}"
+    )
 
 
 @app.command("feedback-import", hidden=True)

@@ -92,9 +92,13 @@ def test_morning_dry_run_never_touches_real_ledger(tmp_path, monkeypatch):
     ledger_root = tmp_path / "ledger"
     real_ledger = ledger_root / "real-ledger.db"
     real_reports = ledger_root / "reports"
+    real_exports = ledger_root / "exports"
     real_reports.mkdir(parents=True)
+    real_exports.mkdir(parents=True)
     sentinel = real_reports / "do-not-touch.txt"
+    export_sentinel = real_exports / "do-not-touch.txt"
     sentinel.write_text("unchanged", encoding="utf-8")
+    export_sentinel.write_text("unchanged", encoding="utf-8")
     monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(real_ledger))
     result = runner.invoke(
         app, ["morning", "--dry-run", "--fixtures-dir", str(FIXTURES_DIR)]
@@ -106,12 +110,22 @@ def test_morning_dry_run_never_touches_real_ledger(tmp_path, monkeypatch):
     assert not real_ledger.exists()
     assert list(real_reports.iterdir()) == [sentinel]
     assert sentinel.read_text(encoding="utf-8") == "unchanged"
+    assert list(real_exports.iterdir()) == [export_sentinel]
+    assert export_sentinel.read_text(encoding="utf-8") == "unchanged"
 
     match = re.search(r"^HTML: (.+)$", result.output, flags=re.MULTILINE)
     assert match is not None
     html_path = Path(match.group(1).strip())
     assert html_path.exists()
     assert real_reports not in html_path.parents
+
+    exports_match = re.search(r"^Exports: (.+)$", result.output, flags=re.MULTILINE)
+    assert exports_match is not None
+    exports_path = Path(exports_match.group(1).strip())
+    assert (exports_path / "map.json").exists()
+    assert (exports_path / "layout.json").exists()
+    assert (exports_path / "index.json").exists()
+    assert real_exports != exports_path
 
 
 def test_morning_dry_run_needs_no_env():
@@ -125,6 +139,27 @@ def test_morning_real_requires_env():
     result = runner.invoke(app, ["morning"])
     assert result.exit_code == 2
     assert "OPENAI_API_KEY" in all_output(result)
+
+
+# --- export ---------------------------------------------------------------
+
+
+def test_export_requires_ledger_path_env():
+    result = runner.invoke(app, ["export"])
+    assert result.exit_code == 2
+    assert "ASTROLABE_LEDGER_PATH" in all_output(result)
+
+
+def test_export_defaults_next_to_ledger(tmp_path, monkeypatch):
+    path = tmp_path / "ledger.db"
+    monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(path))
+    assert runner.invoke(app, ["init"]).exit_code == 0
+
+    result = runner.invoke(app, ["export"])
+
+    assert result.exit_code == 0, all_output(result)
+    assert (tmp_path / "exports" / "map.json").exists()
+    assert (tmp_path / "exports" / "layout.json").exists()
 
 
 # --- report ---------------------------------------------------------------
