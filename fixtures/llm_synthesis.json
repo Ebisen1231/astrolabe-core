@@ -1,0 +1,50 @@
+{
+  "topics": [
+    {
+      "name": "検証器つきRAG(Self-Correcting RAG)",
+      "kind": "concept",
+      "summary": "生成した回答を軽量な検証器で採点し、確信度が低いときだけ再検索・再生成するRAGの改良系。追加コスト1コールで幻覚を大きく減らせるのが売り。",
+      "why_now": "評価なしRAGの限界が広く共有され、検証器を内蔵する設計が標準になりつつあるため。",
+      "learn_content": "- 通常のRAGとの差分は「出力の自己採点 → 低確信なら再検索」のループが1周入ること\n- 鍵は検証器の判定規準。正しさではなく「根拠との整合」を採点させると安定する\n- コストは検証器1コール分だけ増える。mini系モデルで足りるのが実用上の要点\n- 実践課題(10分): 手元のRAGに合否判定プロンプトを1本足し、失敗例を3つ収集する",
+      "est_minutes": 10,
+      "source_urls": ["http://arxiv.org/abs/2507.11001v1"],
+      "related": [
+        {"name": "RAG", "type": "prerequisite"},
+        {"name": "リランキング(Reranking)", "type": "related"}
+      ]
+    },
+    {
+      "name": "リランキング(Reranking)",
+      "kind": "concept",
+      "summary": "検索で取った候補を、より重い採点器で並べ替えて上位精度を稼ぐ工程。対比学習で失敗事例から負例を掘ると、コスト半分で精度が上がるという報告。",
+      "why_now": "検索品質のボトルネックが「取る」から「並べる」に移っており、RAG改善の定番手になっているため。",
+      "learn_content": "- 二段構え(bi-encoderで粗く取り、cross-encoder/rerankerで並べ替える)が基本形\n- 負例の質が性能を決める。ランダム負例より「検索失敗から掘った負例」が効く\n- nDCG@10 のような順位指標の読み方をここで押さえる\n- 実践課題(10分): 自分の検索結果10件を手で並べ替え、上位3件の判断規準を言語化する",
+      "est_minutes": 10,
+      "source_urls": [
+        "http://arxiv.org/abs/2507.11005v1",
+        "https://example.com/blog/reranking"
+      ],
+      "related": [
+        {"name": "RAG", "type": "prerequisite"},
+        {"name": "対比学習", "type": "related"}
+      ]
+    },
+    {
+      "name": "エージェント評価の設計",
+      "kind": "concept",
+      "summary": "ツール使用エージェントを、正解データなしでもコスト制約込みで評価する方法論。予算を入れた途端にフレームワークの序列が変わるのが要点。",
+      "why_now": "ベンチマーク成績と実運用コストの乖離が問題視され、予算込み評価が新しい標準になりつつあるため。",
+      "learn_content": "- 成功率だけでなく「トークン予算内での成功率」を測ると別の絵が見える\n- 正解データがない場合は run log の監査(棄権率・再試行率・安定性)から始める\n- 評価タスクは10件の固定セットで十分。まず再現性を確保する\n- 実践課題(10分): 自分のエージェントの直近ログから、失敗3件を分類してみる",
+      "est_minutes": 12,
+      "source_urls": [
+        "http://arxiv.org/abs/2507.11002v1",
+        "https://example.com/blog/rag-eval"
+      ],
+      "related": [
+        {"name": "LLMエージェント", "type": "prerequisite"},
+        {"name": "RAG", "type": "related"}
+      ]
+    }
+  ],
+  "map_delta_text": "今日はRAGの品質保証系(検証器つきRAG・リランキング)が2ノード増え、エージェント評価の設計と既存のRAGノードに橋が架かった。"
+}
