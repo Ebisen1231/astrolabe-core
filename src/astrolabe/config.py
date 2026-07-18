@@ -1,7 +1,8 @@
 """環境変数からの設定読み込み。
 
 方針:
-- 非dry-run実行では ASTROLABE_LEDGER_PATH を必須とする。暗黙のフォールバックパスは持たない。
+- SQLiteはASTROLABE_LEDGER_PATH、SupabaseはURLとservice role keyを必須とする。
+  選択したバックエンドが失敗しても別バックエンドへ暗黙フォールバックしない。
 - .env ローダは使わず、プロセス環境変数だけを読む(モック向け設定が実キーに
   上書きされる事故の温床を断つため)。
 """
@@ -73,7 +74,7 @@ def load_config(
 ) -> Config:
     """環境変数を検証して Config を返す。
 
-    require_ledger: 台帳を触るコマンド(init/interview/morning/export/report)で True。
+    require_ledger: 選択中バックエンドの台帳を触るコマンドで True。
     require_api: 実APIを呼ぶコマンド(morning 非dry-run / canary)で True。
     不足があれば ConfigError に不足変数名を列挙する。フォールバックはしない。
     """

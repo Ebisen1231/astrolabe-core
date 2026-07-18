@@ -1,7 +1,7 @@
 [project]
 name = "astrolabe"
 version = "0.1.0"
-description = "LLM/AI学習観測エージェント(M1: 自動化とHTML報告)"
+description = "LLM/AI学習観測エージェント(M3: 常駐チューター基盤)"
 requires-python = ">=3.12"
 dependencies = [
     "typer>=0.12",

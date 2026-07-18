@@ -1,4 +1,4 @@
-"""SQLite台帳からM2 UI向けの静的JSONを決定的に生成する。"""
+"""選択中の台帳からM2 UI向け静的JSONを決定的に生成する。"""
 
 from __future__ import annotations
 
