@@ -78,6 +78,16 @@ def test_selected_transitions():
     assert by_id(concepts)["rag"]["status"] == "review"
 
 
+def test_selected_later_keeps_knowledge_state():
+    concepts, _ = derive(
+        [
+            ev(1, 0, "proposed", "rag", name="RAG"),
+            ev(2, 1, "selected", "rag", later=True),
+        ]
+    )
+    assert by_id(concepts)["rag"]["status"] == "unknown"
+
+
 def test_dismissed_keeps_knowledge_state():
     concepts, _ = derive(
         [ev(1, 0, "proposed", "rag", name="RAG"), ev(2, 1, "dismissed", "rag")]

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import tempfile
@@ -16,6 +17,12 @@ import typer
 
 from astrolabe import render
 from astrolabe.config import Config, ConfigError, load_config
+from astrolabe.github_feedback import (
+    GitHubFeedbackClient,
+    close_feedback_issues,
+    import_feedback_issues,
+    sync_feedback,
+)
 from astrolabe.ledger import db, store
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, classify_error
@@ -95,6 +102,13 @@ def _run_canaries(llm) -> None:
             if classify_error(e) == "fatal":
                 _fail(f"カナリア {key} で致命的エラー。本番を開始しない: {e}", 1)
             _fail(f"カナリア {key} が失敗(要調査)。本番を開始しない: {e}", 2)
+
+
+def _feedback_client(config: Config) -> GitHubFeedbackClient | None:
+    if not config.github_token:
+        log.warning("GITHUB_TOKEN未設定。GitHubフィードバック取り込みをスキップ")
+        return None
+    return GitHubFeedbackClient(config.github_token, config.ledger_repository)
 
 
 @app.command()
@@ -208,6 +222,18 @@ def morning(
 
     config = _load_config_or_fail(require_ledger=True, require_api=True)
     conn = _open_ledger_or_fail(config)
+    feedback_client = _feedback_client(config)
+    if feedback_client is not None:
+        try:
+            feedback = sync_feedback(conn, feedback_client, logger=log)
+            typer.secho(
+                "フィードバック: "
+                f"反映 {feedback.imported} / 既存 {feedback.already_recorded} / "
+                f"close {feedback.closed} / close失敗 {feedback.close_failed}",
+                err=True,
+            )
+        finally:
+            feedback_client.close()
     budget = _make_budget(config, max_mini_tokens, max_flagship_tokens)
     llm = ResponsesLLM(
         api_key=config.api_key,
@@ -234,6 +260,47 @@ def morning(
         conn.close()
     typer.echo(outcome.report_text)
     typer.echo(f"HTML: {outcome.html_path}")
+
+
+@app.command("feedback-import", hidden=True)
+def feedback_import(
+    receipt: Annotated[Path, typer.Option(help="close対象Issue番号のJSON保存先")],
+) -> None:
+    """Actions用: Issueを台帳へ反映し、close対象のreceiptを保存する。"""
+    config = _load_config_or_fail(require_ledger=True)
+    receipt.parent.mkdir(parents=True, exist_ok=True)
+    client = _feedback_client(config)
+    if client is None:
+        receipt.write_text("[]\n", encoding="utf-8")
+        return
+    conn = _open_ledger_or_fail(config)
+    try:
+        result = import_feedback_issues(conn, client, logger=log)
+    finally:
+        conn.close()
+        client.close()
+    receipt.write_text(json.dumps(result.issues_to_close) + "\n", encoding="utf-8")
+    typer.echo(
+        f"フィードバック反映: 新規 {result.imported} / 既存 {result.already_recorded} / "
+        f"無効 {result.invalid}"
+    )
+
+
+@app.command("feedback-close", hidden=True)
+def feedback_close(
+    receipt: Annotated[Path, typer.Option(help="feedback-importが生成したJSON")],
+) -> None:
+    """Actions用: ledger push後にreceiptのIssueをcloseする。"""
+    config = _load_config_or_fail()
+    client = _feedback_client(config)
+    if client is None:
+        return
+    try:
+        numbers = [int(n) for n in json.loads(receipt.read_text(encoding="utf-8"))]
+        result = close_feedback_issues(client, numbers, logger=log)
+    finally:
+        client.close()
+    typer.echo(f"フィードバックclose: 成功 {result.closed} / 失敗 {result.close_failed}")
 
 
 @app.command()

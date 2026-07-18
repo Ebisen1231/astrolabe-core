@@ -8,6 +8,7 @@
 - proposed:      概念を登録する(status には触れない=既習を格下げしない)。summary /
                  source_urls / kind を最新情報で補強する。
 - selected:      unknown → queued。learned だった概念の再選択は review。
+                 payload.later=true は興味シグナルだけなのでstatusを変えない。
 - dismissed:     興味シグナルのみ。知識状態は変えない。
 - marked_known:  status=learned。confidence は max(現在値, payload.confidence, 既定0.8)。
 - task_created:  unknown/queued → learning。
@@ -91,7 +92,9 @@ def derive(events: list[dict]) -> tuple[list[dict], list[dict]]:
                     if url not in c.source_urls:
                         c.source_urls.append(url)
             elif etype == "selected":
-                if c.status == "learned":
+                if payload.get("later"):
+                    pass
+                elif c.status == "learned":
                     c.status = "review"
                 elif c.status == "unknown":
                     c.status = "queued"

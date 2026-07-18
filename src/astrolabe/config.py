@@ -40,6 +40,7 @@ class Config:
     max_mini_tokens: int
     max_flagship_tokens: int
     ledger_repository: str
+    github_token: str | None
 
 
 def _int_env(env: Mapping[str, str], name: str, default: int) -> int:
@@ -115,4 +116,5 @@ def load_config(
             env.get("ASTROLABE_LEDGER_REPOSITORY", "").strip()
             or DEFAULT_LEDGER_REPOSITORY
         ),
+        github_token=env.get("GITHUB_TOKEN", "").strip() or None,
     )
