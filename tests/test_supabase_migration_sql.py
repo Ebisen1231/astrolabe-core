@@ -30,8 +30,25 @@ def test_migration_defines_all_m3_tables_and_rpc():
         "astrolabe_replace_derived",
         "astrolabe_record_interview",
         "astrolabe_import_state",
+        "astrolabe_create_task",
+        "astrolabe_complete_task",
     ):
         assert f"function public.{function}" in sql
+
+
+def test_tutor_task_rpcs_are_service_role_only_and_fix_search_path():
+    latest = (
+        Path(__file__).resolve().parent.parent
+        / "supabase"
+        / "migrations"
+        / "202607190003_m3_tutor_tasks.sql"
+    ).read_text(encoding="utf-8").lower()
+    for function in ("astrolabe_create_task", "astrolabe_complete_task"):
+        assert f"create or replace function public.{function}" in latest
+        assert f"grant execute on function public.{function}" in latest
+    assert latest.count("set search_path = public, pg_temp") == 2
+    assert latest.count("from public, anon, authenticated") == 2
+    assert latest.count("to service_role") == 2
 
 
 def test_events_are_append_only_even_for_service_role():

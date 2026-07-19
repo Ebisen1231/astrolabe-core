@@ -304,6 +304,35 @@ class SupabaseLedger:
     def list_tasks(self) -> list[dict]:
         return self._get_all("tasks", order="id.asc")
 
+    def create_task(self, task: dict, event_row: dict) -> dict:
+        response = self._request(
+            "POST",
+            "/rpc/astrolabe_create_task",
+            json={"p_task": task, "p_event": event_row},
+        )
+        value = response.json()
+        if not isinstance(value, dict) or "id" not in value:
+            raise LedgerBackendError("Supabaseタスク作成RPCの応答が不正")
+        return value
+
+    def complete_task(
+        self, task_id: int, evidence: str, done_at: str, event_payload: dict
+    ) -> dict:
+        response = self._request(
+            "POST",
+            "/rpc/astrolabe_complete_task",
+            json={
+                "p_task_id": task_id,
+                "p_evidence": evidence,
+                "p_done_at": done_at,
+                "p_event_payload": event_payload,
+            },
+        )
+        value = response.json()
+        if not isinstance(value, dict) or "id" not in value:
+            raise LedgerBackendError("Supabaseタスク完了RPCの応答が不正")
+        return value
+
     def import_state(self, profile: dict, tasks: list[dict], reports: list[dict]) -> None:
         self._request(
             "POST",
@@ -329,3 +358,36 @@ class SupabaseLedger:
                 headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
                 json=rows,
             )
+
+    def get_llm_usage_total(
+        self, usage_date: str, model_role: str, run_id_prefix: str | None = None
+    ) -> int:
+        params = {
+            "select": "tokens",
+            "usage_date": f"eq.{usage_date}",
+            "model_role": f"eq.{model_role}",
+        }
+        if run_id_prefix is not None:
+            params["run_id"] = f"like.{run_id_prefix}*"
+        response = self._request("GET", "/llm_usage", params=params)
+        rows = response.json()
+        if not isinstance(rows, list):
+            raise LedgerBackendError("Supabase llm_usage応答が配列ではない")
+        return sum(int(row.get("tokens", 0)) for row in rows)
+
+    def get_llm_usage_for_run(self, usage_date: str, run_id: str, model_role: str) -> int:
+        response = self._request(
+            "GET",
+            "/llm_usage",
+            params={
+                "select": "tokens",
+                "usage_date": f"eq.{usage_date}",
+                "run_id": f"eq.{run_id}",
+                "model_role": f"eq.{model_role}",
+                "limit": "1",
+            },
+        )
+        rows = response.json()
+        if not isinstance(rows, list):
+            raise LedgerBackendError("Supabase llm_usage応答が配列ではない")
+        return 0 if not rows else int(rows[0].get("tokens", 0))

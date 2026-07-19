@@ -119,5 +119,38 @@ def list_tasks(conn: LedgerBackend) -> list[dict]:
     return as_backend(conn).list_tasks()
 
 
+def create_task(conn: LedgerBackend, task: dict, event_row: dict) -> dict:
+    created = as_backend(conn).create_task(task, event_row)
+    derive_mod.rebuild(conn)
+    return created
+
+
+def complete_task(
+    conn: LedgerBackend,
+    task_id: int,
+    evidence: str,
+    done_at: str,
+    event_payload: dict,
+) -> dict:
+    completed = as_backend(conn).complete_task(task_id, evidence, done_at, event_payload)
+    derive_mod.rebuild(conn)
+    return completed
+
+
 def save_llm_usage(conn: LedgerBackend, usage_date: str, run_id: str, usage: dict) -> None:
     as_backend(conn).save_llm_usage(usage_date, run_id, usage)
+
+
+def get_llm_usage_total(
+    conn: LedgerBackend,
+    usage_date: str,
+    model_role: str,
+    run_id_prefix: str | None = None,
+) -> int:
+    return as_backend(conn).get_llm_usage_total(usage_date, model_role, run_id_prefix)
+
+
+def get_llm_usage_for_run(
+    conn: LedgerBackend, usage_date: str, run_id: str, model_role: str
+) -> int:
+    return as_backend(conn).get_llm_usage_for_run(usage_date, run_id, model_role)

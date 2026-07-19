@@ -140,3 +140,44 @@ def test_supabase_url_accepts_existing_rest_v1_suffix():
     finally:
         ledger.close()
     assert paths == ["/rest/v1/events"]
+
+
+def test_tutor_task_operations_use_atomic_rpcs():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path.endswith("astrolabe_create_task"):
+            return httpx.Response(200, json={"id": 1, "status": "open"}, request=request)
+        return httpx.Response(200, json={"id": 1, "status": "done"}, request=request)
+
+    ledger = _ledger(handler)
+    try:
+        created = ledger.create_task(
+            {"title": "read", "kind": "read"},
+            {"type": "task_created", "payload": {}},
+        )
+        completed = ledger.complete_task(1, "evidence", "2026-07-19T00:00:00Z", {})
+    finally:
+        ledger.close()
+    assert created["status"] == "open"
+    assert completed["status"] == "done"
+    assert seen == [
+        "/rest/v1/rpc/astrolabe_create_task",
+        "/rest/v1/rpc/astrolabe_complete_task",
+    ]
+
+
+def test_supabase_usage_aggregation_can_filter_tutor_prefix():
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        queries.append(str(request.url.query))
+        return httpx.Response(200, json=[{"tokens": 3}, {"tokens": 4}], request=request)
+
+    ledger = _ledger(handler)
+    try:
+        assert ledger.get_llm_usage_total("2026-07-19", "flagship", "tutor-") == 7
+    finally:
+        ledger.close()
+    assert "run_id=like.tutor-%2A" in queries[0]

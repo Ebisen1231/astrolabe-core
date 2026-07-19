@@ -49,9 +49,21 @@ class LedgerBackend(Protocol):
 
     def list_tasks(self) -> list[dict]: ...
 
+    def create_task(self, task: dict, event_row: dict) -> dict: ...
+
+    def complete_task(
+        self, task_id: int, evidence: str, done_at: str, event_payload: dict
+    ) -> dict: ...
+
     def import_state(self, profile: dict, tasks: list[dict], reports: list[dict]) -> None: ...
 
     def save_llm_usage(self, usage_date: str, run_id: str, usage: dict) -> None: ...
+
+    def get_llm_usage_total(
+        self, usage_date: str, model_role: str, run_id_prefix: str | None = None
+    ) -> int: ...
+
+    def get_llm_usage_for_run(self, usage_date: str, run_id: str, model_role: str) -> int: ...
 
 
 def _event_values(row: dict) -> tuple:
@@ -273,6 +285,60 @@ class SQLiteBackend:
         rows = self.connection.execute("SELECT * FROM tasks ORDER BY id").fetchall()
         return [dict(row) for row in rows]
 
+    def create_task(self, task: dict, event_row: dict) -> dict:
+        with self.connection:
+            cur = self.connection.execute(
+                "INSERT INTO tasks(concept_id, title, kind, status, est_minutes, evidence,"
+                " created_at, done_at) VALUES(?, ?, ?, 'open', ?, NULL, ?, NULL)",
+                (
+                    task.get("concept_id"),
+                    task["title"],
+                    task["kind"],
+                    task.get("est_minutes"),
+                    task["created_at"],
+                ),
+            )
+            task_id = int(cur.lastrowid or 0)
+            payload = dict(event_row.get("payload") or {})
+            payload["task_id"] = task_id
+            self.connection.execute(
+                "INSERT INTO events(ts, type, concept_id, payload) VALUES(?, ?, ?, ?)",
+                (
+                    event_row["ts"],
+                    event_row["type"],
+                    event_row.get("concept_id"),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+            row = self.connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        assert row is not None
+        return dict(row)
+
+    def complete_task(
+        self, task_id: int, evidence: str, done_at: str, event_payload: dict
+    ) -> dict:
+        with self.connection:
+            row = self.connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+            if row is None:
+                raise LedgerBackendError(f"task id={task_id} が見つからない")
+            if row["status"] == "done":
+                raise LedgerBackendError(f"task id={task_id} は完了済み")
+            self.connection.execute(
+                "UPDATE tasks SET status='done', evidence=?, done_at=? WHERE id=?",
+                (evidence, done_at, task_id),
+            )
+            payload = dict(event_payload)
+            payload.update({"task_id": task_id, "evidence": evidence})
+            self.connection.execute(
+                "INSERT INTO events(ts, type, concept_id, payload) VALUES(?, 'task_done', ?, ?)",
+                (done_at, row["concept_id"], json.dumps(payload, ensure_ascii=False)),
+            )
+            completed = self.connection.execute(
+                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+        assert completed is not None
+        return dict(completed)
+
     def import_state(self, profile: dict, tasks: list[dict], reports: list[dict]) -> None:
         with self.connection:
             if any(profile.values()):
@@ -314,6 +380,24 @@ class SQLiteBackend:
                     " DO UPDATE SET tokens=excluded.tokens",
                     (usage_date, run_id, model_role, int(values.get("used", 0))),
                 )
+
+    def get_llm_usage_total(
+        self, usage_date: str, model_role: str, run_id_prefix: str | None = None
+    ) -> int:
+        sql = "SELECT COALESCE(SUM(tokens), 0) FROM llm_usage WHERE usage_date=? AND model_role=?"
+        params: list[object] = [usage_date, model_role]
+        if run_id_prefix is not None:
+            sql += " AND substr(run_id, 1, ?) = ?"
+            params.extend([len(run_id_prefix), run_id_prefix])
+        row = self.connection.execute(sql, params).fetchone()
+        return int(row[0])
+
+    def get_llm_usage_for_run(self, usage_date: str, run_id: str, model_role: str) -> int:
+        row = self.connection.execute(
+            "SELECT tokens FROM llm_usage WHERE usage_date=? AND run_id=? AND model_role=?",
+            (usage_date, run_id, model_role),
+        ).fetchone()
+        return 0 if row is None else int(row[0])
 
 
 def as_backend(ledger: sqlite3.Connection | LedgerBackend) -> LedgerBackend:
