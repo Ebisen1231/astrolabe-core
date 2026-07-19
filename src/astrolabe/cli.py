@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import tempfile
 import uuid
@@ -19,6 +20,7 @@ from zoneinfo import ZoneInfo
 import typer
 
 from astrolabe import exporter, publishing, render
+from astrolabe.anon_guard import AnonGuardError, verify_anon_denied
 from astrolabe.config import Config, ConfigError, load_config
 from astrolabe.github_feedback import (
     GitHubFeedbackClient,
@@ -434,6 +436,28 @@ def publish_exports(
     typer.echo(
         f"Publish完了: {result.published} artifacts / "
         + ", ".join(result.artifact_keys)
+    )
+
+
+@app.command("verify-anon-denied")
+def verify_anon_access_denied() -> None:
+    """公開anonキー単体で全台帳tableが拒否されることを実測する。"""
+    supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+    anon_key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+    missing = [
+        name
+        for name, value in (("SUPABASE_URL", supabase_url), ("SUPABASE_ANON_KEY", anon_key))
+        if not value
+    ]
+    if missing:
+        _fail("環境変数が未設定: " + ", ".join(missing), 2)
+    try:
+        statuses = verify_anon_denied(supabase_url, anon_key)
+    except AnonGuardError as exc:
+        _fail(f"anon拒否検証に失敗: {exc}", 2)
+    typer.echo(
+        "anon拒否確認: "
+        + ", ".join(f"{table}=HTTP {status}" for table, status in statuses.items())
     )
 
 
