@@ -25,8 +25,8 @@ jobs:
       ASTROLABE_LEDGER_REPOSITORY: Ebisen1231/astrolabe-ledger
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      ASTROLABE_MODEL_MINI: gpt-5.4-nano # 無料枠対象の変更時はここを更新
-      ASTROLABE_MODEL_FLAGSHIP: gpt-5.6-terra # 無料枠対象の変更時はここを更新
+      ASTROLABE_MODEL_MINI: gpt-5.4-mini # 無料枠対象の変更時はここを更新
+      ASTROLABE_MODEL_FLAGSHIP: gpt-5.6-sol # 無料枠対象の変更時はここを更新
 
     steps:
       - name: Checkout private ledger
