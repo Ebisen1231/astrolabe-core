@@ -23,6 +23,7 @@ def test_migration_defines_all_m3_tables_and_rpc():
         "profile",
         "daily_reports",
         "llm_usage",
+        "published_artifacts",
     ):
         assert f"create table if not exists public.{table}" in sql
     for function in (
@@ -32,6 +33,7 @@ def test_migration_defines_all_m3_tables_and_rpc():
         "astrolabe_import_state",
         "astrolabe_create_task",
         "astrolabe_complete_task",
+        "astrolabe_publish_artifacts",
     ):
         assert f"function public.{function}" in sql
 
@@ -79,3 +81,23 @@ def test_derived_replacement_uses_safe_update_compatible_delete():
     assert "delete from public.concepts where id is not null" in latest
     assert "delete from public.edges;" not in latest
     assert "delete from public.concepts;" not in latest
+
+
+def test_published_artifact_rpc_is_service_role_only_with_rls_and_fixed_search_path():
+    latest = (
+        Path(__file__).resolve().parent.parent
+        / "supabase"
+        / "migrations"
+        / "202607190004_m3_published_artifacts.sql"
+    ).read_text(encoding="utf-8").lower()
+    assert "alter table public.published_artifacts enable row level security" in latest
+    assert "set search_path = public, pg_temp" in latest
+    assert "from public, anon, authenticated" in latest
+    assert (
+        "grant execute on function public.astrolabe_publish_artifacts(jsonb) to service_role"
+        in latest
+    )
+    assert (
+        "grant select, insert, update, delete on public.published_artifacts to service_role"
+        in latest
+    )

@@ -49,6 +49,10 @@ class LedgerBackend(Protocol):
 
     def list_tasks(self) -> list[dict]: ...
 
+    def publish_artifacts(self, artifacts: list[dict]) -> int: ...
+
+    def get_published_artifact(self, artifact_key: str) -> dict | None: ...
+
     def create_task(self, task: dict, event_row: dict) -> dict: ...
 
     def complete_task(
@@ -284,6 +288,36 @@ class SQLiteBackend:
     def list_tasks(self) -> list[dict]:
         rows = self.connection.execute("SELECT * FROM tasks ORDER BY id").fetchall()
         return [dict(row) for row in rows]
+
+    def publish_artifacts(self, artifacts: list[dict]) -> int:
+        with self.connection:
+            for artifact in artifacts:
+                self.connection.execute(
+                    "INSERT INTO published_artifacts(artifact_key, kind, report_date,"
+                    " schema_version, payload, updated_at) VALUES(?, ?, ?, ?, ?, ?)"
+                    " ON CONFLICT(artifact_key) DO UPDATE SET kind=excluded.kind,"
+                    " report_date=excluded.report_date, schema_version=excluded.schema_version,"
+                    " payload=excluded.payload, updated_at=excluded.updated_at",
+                    (
+                        artifact["artifact_key"],
+                        artifact["kind"],
+                        artifact.get("report_date"),
+                        artifact["schema_version"],
+                        json.dumps(artifact["payload"], ensure_ascii=False, sort_keys=True),
+                        artifact["updated_at"],
+                    ),
+                )
+        return len(artifacts)
+
+    def get_published_artifact(self, artifact_key: str) -> dict | None:
+        row = self.connection.execute(
+            "SELECT * FROM published_artifacts WHERE artifact_key = ?", (artifact_key,)
+        ).fetchone()
+        if row is None:
+            return None
+        value = dict(row)
+        value["payload"] = json.loads(value["payload"])
+        return value
 
     def create_task(self, task: dict, event_row: dict) -> dict:
         with self.connection:

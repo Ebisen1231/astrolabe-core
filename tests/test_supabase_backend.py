@@ -181,3 +181,37 @@ def test_supabase_usage_aggregation_can_filter_tutor_prefix():
     finally:
         ledger.close()
     assert "run_id=like.tutor-%2A" in queries[0]
+
+
+def test_published_artifacts_use_atomic_rpc_and_service_read():
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path.endswith("astrolabe_publish_artifacts"):
+            return httpx.Response(200, json={"published": 1}, request=request)
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "artifact_key": "map",
+                    "kind": "map",
+                    "report_date": None,
+                    "schema_version": 1,
+                    "payload": {"schema_version": 1},
+                    "updated_at": "2026-07-19T00:00:00Z",
+                }
+            ],
+            request=request,
+        )
+
+    ledger = _ledger(handler)
+    try:
+        assert ledger.publish_artifacts([{"artifact_key": "map"}]) == 1
+        assert ledger.get_published_artifact("map")["kind"] == "map"
+    finally:
+        ledger.close()
+    assert seen == [
+        "/rest/v1/rpc/astrolabe_publish_artifacts",
+        "/rest/v1/published_artifacts",
+    ]

@@ -119,6 +119,14 @@ def list_tasks(conn: LedgerBackend) -> list[dict]:
     return as_backend(conn).list_tasks()
 
 
+def publish_artifacts(conn: LedgerBackend, artifacts: list[dict]) -> int:
+    return as_backend(conn).publish_artifacts(artifacts)
+
+
+def get_published_artifact(conn: LedgerBackend, artifact_key: str) -> dict | None:
+    return as_backend(conn).get_published_artifact(artifact_key)
+
+
 def create_task(conn: LedgerBackend, task: dict, event_row: dict) -> dict:
     created = as_backend(conn).create_task(task, event_row)
     derive_mod.rebuild(conn)

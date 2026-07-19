@@ -81,6 +81,10 @@ jobs:
       - name: Export UI data
         run: core/.venv/bin/astrolabe export
 
+      # continue-on-errorを付けない。失敗時は古い公開データを黙って残さずjobを失敗させる。
+      - name: Publish UI data to Supabase
+        run: core/.venv/bin/astrolabe publish-exports
+
       - name: Persist snapshot, HTML, and UI exports
         run: |
           git config user.name "github-actions[bot]"

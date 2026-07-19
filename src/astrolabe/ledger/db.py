@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS llm_usage(
   tokens     INTEGER NOT NULL CHECK(tokens >= 0),
   PRIMARY KEY(usage_date, run_id, model_role)
 );
+
+-- UI公開用の導出artifact。一次データではなく、既存exportと同じJSON契約を保持する。
+CREATE TABLE IF NOT EXISTS published_artifacts(
+  artifact_key   TEXT PRIMARY KEY,
+  kind           TEXT NOT NULL,
+  report_date    TEXT,
+  schema_version INTEGER NOT NULL,
+  payload        TEXT NOT NULL,
+  updated_at     TEXT NOT NULL
+);
 """
 
 

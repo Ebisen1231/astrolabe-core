@@ -304,6 +304,32 @@ class SupabaseLedger:
     def list_tasks(self) -> list[dict]:
         return self._get_all("tasks", order="id.asc")
 
+    def publish_artifacts(self, artifacts: list[dict]) -> int:
+        response = self._request(
+            "POST",
+            "/rpc/astrolabe_publish_artifacts",
+            json={"p_artifacts": artifacts},
+        )
+        value = response.json()
+        if not isinstance(value, dict) or not isinstance(value.get("published"), int):
+            raise LedgerBackendError("Supabase公開artifact RPCの応答が不正")
+        return int(value["published"])
+
+    def get_published_artifact(self, artifact_key: str) -> dict | None:
+        response = self._request(
+            "GET",
+            "/published_artifacts",
+            params={
+                "select": "artifact_key,kind,report_date,schema_version,payload,updated_at",
+                "artifact_key": f"eq.{artifact_key}",
+                "limit": "1",
+            },
+        )
+        rows = response.json()
+        if not isinstance(rows, list):
+            raise LedgerBackendError("Supabase公開artifact応答が配列ではない")
+        return None if not rows else rows[0]
+
     def create_task(self, task: dict, event_row: dict) -> dict:
         response = self._request(
             "POST",

@@ -19,6 +19,8 @@ def test_ledger_workflow_reference_has_m3_supabase_snapshot_and_minimal_permissi
     assert "SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" in text
     assert "ASTROLABE_ALLOW_DATE_OVERRIDE" not in text
     assert "astrolabe export" in text
+    assert "astrolabe publish-exports" in text
+    assert "Publish UI data to Supabase" in text
     assert "astrolabe snapshot" in text
     assert "snapshots/ reports/ exports/" in text
     assert "git add -- astrolabe.db" not in text

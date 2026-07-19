@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import typer
 
-from astrolabe import exporter, render
+from astrolabe import exporter, publishing, render
 from astrolabe.config import Config, ConfigError, load_config
 from astrolabe.github_feedback import (
     GitHubFeedbackClient,
@@ -403,6 +403,37 @@ def export_data(
     typer.echo(
         f"Export完了: {result.output_dir} / reports {len(result.report_dates)} / "
         f"concepts {result.concept_count} / edges {result.edge_count}"
+    )
+
+
+@app.command("publish-exports")
+def publish_exports(
+    input_dir: Annotated[
+        Path | None,
+        typer.Option("--in", help="公開するexportsディレクトリ"),
+    ] = None,
+    all_reports: Annotated[
+        bool,
+        typer.Option("--all-reports", help="初回投入用に過去reportもすべて公開する"),
+    ] = False,
+) -> None:
+    """既存exportをSupabase公開artifactへ原子的にupsertする。"""
+    config = _load_config_or_fail(require_ledger=True, require_supabase=True)
+    if config.backend != "supabase":
+        _fail("publish-exportsはASTROLABE_BACKEND=supabaseでのみ実行する", 2)
+    exports_dir = input_dir or _artifact_root_or_fail(config) / "exports"
+    conn = _open_ledger_or_fail(config)
+    try:
+        result = publishing.publish_export_directory(
+            conn, exports_dir, all_reports=all_reports
+        )
+    except (publishing.PublishError, LedgerBackendError) as exc:
+        _fail(f"公開artifactのpublishに失敗: {exc}", 2)
+    finally:
+        conn.close()
+    typer.echo(
+        f"Publish完了: {result.published} artifacts / "
+        + ", ".join(result.artifact_keys)
     )
 
 
