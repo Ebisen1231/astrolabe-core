@@ -29,9 +29,20 @@ def open_configured_ledger(config: Config):
 class LocalTutorRuntime:
     """リクエストごとに台帳を開閉し、サーバ側状態を持たない。"""
 
-    def __init__(self, config: Config, *, now=None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        *,
+        now=None,
+        llm_timeout: float = 120.0,
+        retry_timeouts: bool = True,
+        llm_deadline_seconds: float | None = None,
+    ) -> None:
         self.config = config
         self._now = now or (lambda: datetime.now(UTC))
+        self._llm_timeout = llm_timeout
+        self._retry_timeouts = retry_timeouts
+        self._llm_deadline_seconds = llm_deadline_seconds
 
     def _usage_date(self) -> str:
         return self._now().astimezone(JST).date().isoformat()
@@ -55,6 +66,9 @@ class LocalTutorRuntime:
                 budget=budget,
                 usage_observer=guard.record_usage,
                 attempt_precheck=guard.attempt_precheck,
+                timeout=self._llm_timeout,
+                retry_timeouts=self._retry_timeouts,
+                deadline_seconds=self._llm_deadline_seconds,
             )
             return TutorEngine(
                 llm,

@@ -11,6 +11,7 @@ from astrolabe.llm.budget import BudgetExceededError, TokenBudget, estimate_toke
 from astrolabe.llm.client import (
     FatalLLMError,
     LLMCallError,
+    LLMTimeoutError,
     ResponsesLLM,
     classify_error,
     raise_if_fatal_text,
@@ -150,6 +151,46 @@ def test_retryable_error_retried_once():
     rate = openai.RateLimitError("slow down", response=_http_response(429), body=None)
     llm, budget, stub = make_llm([rate, ok_resp()])
     assert _call(llm) == {"ok": 1}
+    assert len(stub.calls) == 2
+
+
+def test_serverless_timeout_is_returned_without_second_attempt():
+    timeout = openai.APITimeoutError(request=httpx.Request("POST", "https://x"))
+    budget = TokenBudget({"mini": 10_000})
+    llm = ResponsesLLM(
+        api_key="sk-test-dummy",
+        models={"mini": "m-mini"},
+        budget=budget,
+        retry_timeouts=False,
+    )
+    stub = StubResponses([timeout, ok_resp()])
+    llm._client = SimpleNamespace(responses=stub)
+    with pytest.raises(LLMTimeoutError):
+        _call(llm)
+    assert len(stub.calls) == 1
+
+
+def test_serverless_deadline_is_shared_across_tool_rounds():
+    now = [10.0]
+    budget = TokenBudget({"flagship": 10_000})
+    llm = ResponsesLLM(
+        api_key="sk-test-dummy",
+        models={"flagship": "m-flag"},
+        budget=budget,
+        timeout=100,
+        deadline_seconds=100,
+        clock=lambda: now[0],
+    )
+    stub = StubResponses([tool_resp([], text="ok"), tool_resp([], text="ok")])
+    llm._client = SimpleNamespace(responses=stub)
+    llm.tool_turn([{"role": "user", "content": "one"}], [])
+    now[0] = 105.0
+    llm.tool_turn([{"role": "user", "content": "two"}], [])
+    assert stub.calls[0]["timeout"] == 100
+    assert stub.calls[1]["timeout"] == 5
+    now[0] = 111.0
+    with pytest.raises(LLMTimeoutError):
+        llm.tool_turn([{"role": "user", "content": "three"}], [])
     assert len(stub.calls) == 2
 
 

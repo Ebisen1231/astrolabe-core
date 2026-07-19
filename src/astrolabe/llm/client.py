@@ -39,6 +39,10 @@ class LLMCallError(RuntimeError):
     """リトライ1回を使い切った、または構造化出力を解釈できなかった。"""
 
 
+class LLMTimeoutError(LLMCallError):
+    """アプリ層で整形して返せるLLM timeout。"""
+
+
 def raise_if_fatal_text(text: str) -> None:
     """エラー文字列の致命パターン再スキャン(broad except への貫通対策)。"""
     low = (text or "").lower()
@@ -77,6 +81,9 @@ class ResponsesLLM:
         logger: logging.Logger | None = None,
         usage_observer: Callable[[str, int], None] | None = None,
         attempt_precheck: Callable[[str, int], None] | None = None,
+        retry_timeouts: bool = True,
+        deadline_seconds: float | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client = openai.OpenAI(api_key=api_key, timeout=timeout, max_retries=0)
         self._models = dict(models)
@@ -86,6 +93,10 @@ class ResponsesLLM:
         self._logger = logger or logging.getLogger("astrolabe.llm")
         self._usage_observer = usage_observer
         self._attempt_precheck = attempt_precheck
+        self._retry_timeouts = retry_timeouts
+        self._request_timeout = timeout
+        self._clock = clock
+        self._deadline = None if deadline_seconds is None else clock() + deadline_seconds
 
     def structured(
         self,
@@ -197,12 +208,21 @@ class ResponsesLLM:
             if self._attempt_precheck is not None:
                 self._attempt_precheck(budget_key, estimated)
             self._budget.precheck(budget_key, estimated)
+            attempt_kwargs = kwargs
+            if self._deadline is not None:
+                remaining = self._deadline - self._clock()
+                if remaining <= 0:
+                    raise LLMTimeoutError(f"LLM呼び出しの全体deadline超過({label})")
+                attempt_kwargs = dict(kwargs)
+                attempt_kwargs["timeout"] = min(self._request_timeout, remaining)
             try:
-                resp = self._client.responses.create(**kwargs)
+                resp = self._client.responses.create(**attempt_kwargs)
             except Exception as e:
                 if classify_error(e) == "fatal":
                     raise FatalLLMError(f"致命的エラー({label})。runを中断する: {e}") from e
                 last_error = e
+                if isinstance(e, openai.APITimeoutError) and not self._retry_timeouts:
+                    raise LLMTimeoutError(f"LLM呼び出しがtimeout({label})") from e
                 if classify_error(e) == "retryable" and attempt == 0:
                     self._logger.warning(
                         "リトライ可能エラー(%s)。%.0f秒待って1回だけ再試行: %s",
