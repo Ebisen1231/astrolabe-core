@@ -122,7 +122,7 @@ def derive(events: list[dict]) -> tuple[list[dict], list[dict]]:
             etype_edge = edge.get("type")
             if not src or not dst or etype_edge not in VALID_EDGE_TYPES or src == dst:
                 continue
-            ensure(src, ts)
+            ensure(src, ts, edge.get("src_name"))
             ensure(dst, ts, edge.get("dst_name"))
             key = (src, dst, etype_edge)
             weight = float(edge.get("weight", 1.0))

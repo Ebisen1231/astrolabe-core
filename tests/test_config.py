@@ -6,6 +6,7 @@ from astrolabe.config import (
     DEFAULT_MAX_FLAGSHIP_TOKENS,
     DEFAULT_MAX_MINI_TOKENS,
     DEFAULT_RSS_FEEDS,
+    DEFAULT_TUTOR_MAX_FLAGSHIP_TOKENS,
     ConfigError,
     load_config,
 )
@@ -17,6 +18,7 @@ def test_dry_run_requires_nothing():
     assert config.api_key is None
     assert config.max_mini_tokens == DEFAULT_MAX_MINI_TOKENS
     assert config.max_flagship_tokens == DEFAULT_MAX_FLAGSHIP_TOKENS
+    assert config.tutor_max_flagship_tokens == DEFAULT_TUTOR_MAX_FLAGSHIP_TOKENS
     assert config.rss_feeds == DEFAULT_RSS_FEEDS
 
 
@@ -70,6 +72,15 @@ def test_api_required_lists_all_missing():
         assert name in message
 
 
+def test_tutor_api_requires_only_flagship_model():
+    config = load_config(
+        require_flagship=True,
+        env={"OPENAI_API_KEY": "sk-test", "ASTROLABE_MODEL_FLAGSHIP": "flagship"},
+    )
+    assert config.model_flagship == "flagship"
+    assert config.model_mini is None
+
+
 def test_env_values_are_used_exactly():
     """設定優先順位の回帰テスト: 環境変数の値がそのまま使われる。"""
     env = {
@@ -81,6 +92,7 @@ def test_env_values_are_used_exactly():
         "ASTROLABE_CACHE_DIR": "/tmp/cache",
         "ASTROLABE_MAX_MINI_TOKENS": "1000",
         "ASTROLABE_MAX_FLAGSHIP_TOKENS": "200",
+        "ASTROLABE_TUTOR_MAX_FLAGSHIP_TOKENS": "150",
     }
     config = load_config(require_ledger=True, require_api=True, env=env)
     assert config.ledger_path == Path("/tmp/l.db")
@@ -91,6 +103,7 @@ def test_env_values_are_used_exactly():
     assert config.cache_dir == Path("/tmp/cache")
     assert config.max_mini_tokens == 1000
     assert config.max_flagship_tokens == 200
+    assert config.tutor_max_flagship_tokens == 150
 
 
 def test_invalid_token_cap():

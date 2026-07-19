@@ -16,6 +16,7 @@ from pathlib import Path
 
 DEFAULT_MAX_MINI_TOKENS = 500_000
 DEFAULT_MAX_FLAGSHIP_TOKENS = 70_000
+DEFAULT_TUTOR_MAX_FLAGSHIP_TOKENS = 30_000
 DEFAULT_ARXIV_CATEGORIES: tuple[str, ...] = ("cs.CL", "cs.AI", "cs.LG")
 DEFAULT_RSS_FEEDS: tuple[str, ...] = (
     "https://simonwillison.net/atom/everything/",
@@ -46,6 +47,7 @@ class Config:
     cache_dir: Path
     max_mini_tokens: int
     max_flagship_tokens: int
+    tutor_max_flagship_tokens: int
     ledger_repository: str
     github_token: str | None
     discord_webhook_url: str | None
@@ -68,6 +70,7 @@ def load_config(
     *,
     require_ledger: bool = False,
     require_api: bool = False,
+    require_flagship: bool = False,
     require_sqlite: bool = False,
     require_supabase: bool = False,
     env: Mapping[str, str] | None = None,
@@ -101,10 +104,10 @@ def load_config(
     api_key = env.get("OPENAI_API_KEY", "").strip() or None
     model_mini = env.get("ASTROLABE_MODEL_MINI", "").strip() or None
     model_flagship = env.get("ASTROLABE_MODEL_FLAGSHIP", "").strip() or None
-    if require_api:
+    if require_api or require_flagship:
         if not api_key:
             missing.append("OPENAI_API_KEY")
-        if not model_mini:
+        if require_api and not model_mini:
             missing.append("ASTROLABE_MODEL_MINI")
         if not model_flagship:
             missing.append("ASTROLABE_MODEL_FLAGSHIP")
@@ -144,6 +147,11 @@ def load_config(
         max_mini_tokens=_int_env(env, "ASTROLABE_MAX_MINI_TOKENS", DEFAULT_MAX_MINI_TOKENS),
         max_flagship_tokens=_int_env(
             env, "ASTROLABE_MAX_FLAGSHIP_TOKENS", DEFAULT_MAX_FLAGSHIP_TOKENS
+        ),
+        tutor_max_flagship_tokens=_int_env(
+            env,
+            "ASTROLABE_TUTOR_MAX_FLAGSHIP_TOKENS",
+            DEFAULT_TUTOR_MAX_FLAGSHIP_TOKENS,
         ),
         ledger_repository=(
             env.get("ASTROLABE_LEDGER_REPOSITORY", "").strip()

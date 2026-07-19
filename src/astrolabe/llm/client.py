@@ -14,6 +14,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import openai
 
@@ -74,6 +75,8 @@ class ResponsesLLM:
         retry_wait: float = 3.0,
         sleeper: Callable[[float], None] = time.sleep,
         logger: logging.Logger | None = None,
+        usage_observer: Callable[[str, int], None] | None = None,
+        attempt_precheck: Callable[[str, int], None] | None = None,
     ) -> None:
         self._client = openai.OpenAI(api_key=api_key, timeout=timeout, max_retries=0)
         self._models = dict(models)
@@ -81,6 +84,8 @@ class ResponsesLLM:
         self._retry_wait = retry_wait
         self._sleeper = sleeper
         self._logger = logger or logging.getLogger("astrolabe.llm")
+        self._usage_observer = usage_observer
+        self._attempt_precheck = attempt_precheck
 
     def structured(
         self,
@@ -136,11 +141,61 @@ class ResponsesLLM:
 
         return self._call_with_single_retry(budget_key, "canary", kwargs, 64, validate)
 
+    def tool_turn(
+        self,
+        input_items: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        *,
+        max_output_tokens: int = 2_000,
+    ) -> dict:
+        """strict function callingを1応答ぶん実行する。
+
+        呼び出し側がoutput_itemsとfunction_call_outputを次のinputへ足すため、
+        OpenAI側のprevious_response_idやサーバ側セッションへ依存しない。
+        """
+        model = self._models["flagship"]
+        kwargs = {
+            "model": model,
+            "input": input_items,
+            "tools": tools,
+            "tool_choice": "auto",
+            "max_output_tokens": max_output_tokens,
+            "store": False,
+            "include": ["reasoning.encrypted_content"],
+        }
+
+        def validate(resp) -> dict:
+            if getattr(resp, "status", None) == "incomplete":
+                raise LLMCallError(
+                    f"出力が途中で切れた(tutor, max_output_tokens={max_output_tokens})"
+                )
+            output_items = [item.model_dump(exclude_none=True) for item in resp.output]
+            calls = [
+                {
+                    "call_id": item.call_id,
+                    "name": item.name,
+                    "arguments": item.arguments,
+                }
+                for item in resp.output
+                if getattr(item, "type", None) == "function_call"
+            ]
+            text = (getattr(resp, "output_text", "") or "").strip()
+            if not calls and not text:
+                raise LLMCallError("チューター応答にテキストもツール呼び出しもない")
+            return {"text": text, "tool_calls": calls, "output_items": output_items}
+
+        serialized = json.dumps(input_items, ensure_ascii=False, sort_keys=True)
+        serialized_tools = json.dumps(tools, ensure_ascii=False, sort_keys=True)
+        estimated = estimate_tokens(serialized + serialized_tools) + max_output_tokens
+        return self._call_with_single_retry("flagship", "tutor", kwargs, estimated, validate)
+
     def _call_with_single_retry(
         self, budget_key: str, label: str, kwargs: dict, estimated: int, validate
     ):
         last_error: Exception | None = None
         for attempt in range(2):  # 初回 + リトライ1回(全体で1回に統一)
+            if self._attempt_precheck is not None:
+                self._attempt_precheck(budget_key, estimated)
             self._budget.precheck(budget_key, estimated)
             try:
                 resp = self._client.responses.create(**kwargs)
@@ -175,6 +230,8 @@ class ResponsesLLM:
             getattr(usage, "output_tokens", 0) or 0
         )
         used, cap = self._budget.add(budget_key, tokens)
+        if self._usage_observer is not None:
+            self._usage_observer(budget_key, tokens)
         self._logger.info(
             "llm %-14s model=%s tokens=%d 累積 %s %d/%d (%.1f%%)",
             label,

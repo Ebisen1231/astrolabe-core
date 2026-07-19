@@ -93,6 +93,23 @@ def ok_resp(payload='{"ok": 1}', input_tokens=100, output_tokens=20, status="com
     )
 
 
+class StubOutputItem:
+    def __init__(self, **values):
+        self.__dict__.update(values)
+
+    def model_dump(self, exclude_none=True):
+        return dict(self.__dict__)
+
+
+def tool_resp(items, text="", input_tokens=10, output_tokens=5):
+    return SimpleNamespace(
+        status="completed",
+        output=items,
+        output_text=text,
+        usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+    )
+
+
 def make_llm(results, caps=None):
     budget = TokenBudget(caps or {"mini": 10_000, "flagship": 10_000})
     llm = ResponsesLLM(
@@ -187,6 +204,41 @@ def test_canary_counts_into_budget():
     info = llm.canary("mini")
     assert info == {"model": "m-mini", "output": "OK"}
     assert budget.summary()["mini"]["used"] == 12  # カナリア分も計上
+
+
+def test_tool_turn_returns_function_calls_and_uses_stateless_input():
+    item = StubOutputItem(
+        type="function_call", call_id="call-1", name="search_ledger", arguments='{"query":"RoPE"}'
+    )
+    llm, budget, stub = make_llm([tool_resp([item])])
+    result = llm.tool_turn(
+        [{"role": "user", "content": "RoPEって何?"}],
+        [{"type": "function", "name": "search_ledger", "parameters": {}}],
+    )
+    assert result["tool_calls"][0]["name"] == "search_ledger"
+    assert result["output_items"][0]["call_id"] == "call-1"
+    assert stub.calls[0]["store"] is False
+    assert "previous_response_id" not in stub.calls[0]
+    assert budget.summary()["flagship"]["used"] == 15
+
+
+def test_usage_and_attempt_observers_cover_each_response():
+    observed_usage: list[tuple[str, int]] = []
+    observed_checks: list[tuple[str, int]] = []
+    budget = TokenBudget({"mini": 10_000, "flagship": 10_000})
+    llm = ResponsesLLM(
+        api_key="sk-test-dummy",
+        models={"mini": "m-mini", "flagship": "m-flag"},
+        budget=budget,
+        usage_observer=lambda key, tokens: observed_usage.append((key, tokens)),
+        attempt_precheck=lambda key, estimate: observed_checks.append((key, estimate)),
+        sleeper=lambda _: None,
+    )
+    stub = StubResponses([ok_resp(status="incomplete"), ok_resp()])
+    llm._client = SimpleNamespace(responses=stub)
+    assert _call(llm) == {"ok": 1}
+    assert observed_usage == [("mini", 120), ("mini", 120)]
+    assert len(observed_checks) == 2
 
 
 # --- FixtureLLM -----------------------------------------------------------
