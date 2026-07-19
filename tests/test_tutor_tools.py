@@ -86,6 +86,7 @@ def test_quiz_ask_does_not_write_but_grade_updates_confidence(ledger):
         "正解",
     )
     assert graded["type"] == "quiz_result"
+    assert events.load_events(ledger)[0]["payload"]["user_answer"] == "座標"
     concept = store.list_concepts(ledger)[0]
     assert (concept["status"], concept["confidence"]) == ("learned", 0.9)
 

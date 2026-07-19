@@ -155,7 +155,7 @@ class TutorTools:
         concept_name: str,
         question: str,
         options: list[str],
-        answer: str,
+        user_answer: str,
         score: float,
         feedback: str,
     ) -> dict[str, Any]:
@@ -171,12 +171,12 @@ class TutorTools:
             }
         if action != "grade":
             raise TutorToolError("quiz actionはaskまたはgrade")
-        if not answer.strip() or not 0 <= score <= 1:
+        if not user_answer.strip() or not 0 <= score <= 1:
             raise TutorToolError("採点には回答と0..1のscoreが必要")
         payload = {
             "name": concept_name,
             "question": question,
-            "answer": answer,
+            "user_answer": user_answer,
             "score": score,
             "feedback": feedback,
         }
