@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import tempfile
+import uuid
 from datetime import UTC, datetime
 from datetime import date as date_type
 from pathlib import Path
@@ -35,6 +36,9 @@ from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, clas
 from astrolabe.llm.fixtures import FixtureLLM
 from astrolabe.notify_discord import send_discord_report
 from astrolabe.pipeline import morning as morning_mod
+from astrolabe.tutor.engine import TutorEngineError
+from astrolabe.tutor.runtime import LocalTutorRuntime
+from astrolabe.tutor.server import LOOPBACK_HOST, serve_tutor
 
 app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M3)")
 log = logging.getLogger("astrolabe")
@@ -152,6 +156,54 @@ def _feedback_client(config: Config) -> GitHubFeedbackClient | None:
         log.warning("GITHUB_TOKEN未設定。GitHubフィードバック取り込みをスキップ")
         return None
     return GitHubFeedbackClient(config.github_token, config.ledger_repository)
+
+
+@app.command()
+def tutor() -> None:
+    """常駐チューターとのローカル対話。会話履歴はこのCLIプロセスだけが保持する。"""
+    config = _load_config_or_fail(require_ledger=True, require_flagship=True)
+    runtime = LocalTutorRuntime(config)
+    session_id = f"tutor-{uuid.uuid4().hex}"
+    history: list[dict] = []
+    typer.echo("Astrolabe tutor。終了は /quit。会話全文は台帳へ保存しません。")
+    while True:
+        message = typer.prompt("you", default="", show_default=False).strip()
+        if message in {"/quit", "/exit"}:
+            return
+        if not message:
+            continue
+        history.append({"role": "user", "content": message})
+        try:
+            result = runtime.turn(history, session_id)
+        except FatalLLMError as exc:
+            _fail(f"致命的LLMエラー: {exc}", 1)
+        except (LLMCallError, TutorEngineError, LedgerBackendError) as exc:
+            _fail(f"チューター処理に失敗: {exc}", 2)
+        typer.echo(f"tutor> {result['message']}")
+        for card in result.get("cards", []):
+            typer.echo("  [tool] " + json.dumps(card, ensure_ascii=False, sort_keys=True))
+        history.append(
+            {
+                "role": "assistant",
+                "content": result["message"],
+                "cards": result.get("cards", []),
+            }
+        )
+        if result.get("budget_exhausted"):
+            return
+
+
+@app.command("tutor-serve")
+def tutor_serve(
+    port: Annotated[int, typer.Option(help="ローカルAPIのポート")] = 8787,
+) -> None:
+    """認証なしローカルAPIを127.0.0.1固定で起動する。"""
+    config = _load_config_or_fail(require_ledger=True, require_flagship=True)
+    typer.echo(f"Tutor APIを http://{LOOPBACK_HOST}:{port} で起動")
+    try:
+        serve_tutor(LocalTutorRuntime(config), port)
+    except (OSError, ValueError) as exc:
+        _fail(f"Tutor APIを起動できない: {exc}", 2)
 
 
 @app.command()

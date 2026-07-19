@@ -87,6 +87,61 @@ def test_interview_requires_initialized_ledger(tmp_path, monkeypatch):
     assert result.exit_code == 2  # init 前は失敗(暗黙生成しない)
 
 
+# --- tutor ---------------------------------------------------------------
+
+
+def _set_tutor_env(tmp_path, monkeypatch):
+    path = tmp_path / "ledger.db"
+    monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(path))
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("ASTROLABE_MODEL_FLAGSHIP", "flagship-test")
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    return path
+
+
+def test_tutor_cli_keeps_history_client_side_and_prints_cards(tmp_path, monkeypatch):
+    _set_tutor_env(tmp_path, monkeypatch)
+    seen = []
+
+    class FakeRuntime:
+        def __init__(self, config):
+            pass
+
+        def turn(self, history, session_id):
+            seen.append((list(history), session_id))
+            return {
+                "message": "タスクを作りました",
+                "cards": [{"type": "task_created", "task": {"id": 1}}],
+                "budget_exhausted": False,
+            }
+
+    monkeypatch.setattr("astrolabe.cli.LocalTutorRuntime", FakeRuntime)
+    result = runner.invoke(app, ["tutor"], input="RoPEって何?\n/quit\n")
+    assert result.exit_code == 0, all_output(result)
+    assert "タスクを作りました" in result.output
+    assert "task_created" in result.output
+    assert seen[0][0] == [{"role": "user", "content": "RoPEって何?"}]
+    assert seen[0][1].startswith("tutor-")
+
+
+def test_tutor_requires_flagship_but_not_mini(tmp_path, monkeypatch):
+    path = tmp_path / "ledger.db"
+    monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(path))
+    assert runner.invoke(app, ["init"]).exit_code == 0
+    result = runner.invoke(app, ["tutor"], input="/quit\n")
+    assert result.exit_code == 2
+    assert "OPENAI_API_KEY" in all_output(result)
+    assert "ASTROLABE_MODEL_FLAGSHIP" in all_output(result)
+    assert "ASTROLABE_MODEL_MINI" not in all_output(result)
+
+
+def test_tutor_serve_exposes_no_host_option():
+    result = runner.invoke(app, ["tutor-serve", "--help"])
+    assert result.exit_code == 0
+    assert "--port" in result.output
+    assert "--host" not in result.output
+
+
 # --- morning --------------------------------------------------------------
 
 
