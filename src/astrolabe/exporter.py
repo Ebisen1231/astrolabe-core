@@ -9,6 +9,7 @@ from pathlib import Path
 
 from astrolabe import layout
 from astrolabe.ledger import events, store
+from astrolabe.ledger.derive import concept_id_from_name
 
 SCHEMA_VERSION = 1
 
@@ -68,6 +69,45 @@ def _validate_report_date(value: str) -> str:
     return value
 
 
+def _export_topic(topic: dict) -> dict:
+    exported = dict(topic)
+    exported["concept_id"] = concept_id_from_name(str(topic.get("name", "")))
+    exported["related"] = [
+        {
+            **related,
+            "concept_id": concept_id_from_name(str(related.get("name", ""))),
+        }
+        for related in topic.get("related", [])
+    ]
+    return exported
+
+
+def _build_report_index(reports: list[dict]) -> tuple[list[dict], dict[str, list[dict]]]:
+    summaries: list[dict] = []
+    backlinks: dict[str, list[dict]] = {}
+    for report in reversed(reports):
+        topics = []
+        for raw_topic in report["items"].get("topics", []):
+            topic = _export_topic(raw_topic)
+            summary = {
+                "concept_id": topic["concept_id"],
+                "name": str(topic.get("name", "")),
+                "summary": str(topic.get("summary", "")),
+            }
+            topics.append(summary)
+            backlinks.setdefault(topic["concept_id"], []).append(
+                {"date": str(report["date"]), "topic_name": summary["name"]}
+            )
+        summaries.append(
+            {
+                "date": str(report["date"]),
+                "map_delta_text": str(report["map_delta_text"]),
+                "topics": topics,
+            }
+        )
+    return summaries, backlinks
+
+
 def export_ledger(conn, output_dir: Path) -> ExportResult:
     """台帳全体をUI契約へ書き出す。生成時刻は含めず、同一台帳なら同一bytesにする。"""
     concepts = store.list_concepts(conn)
@@ -100,9 +140,12 @@ def export_ledger(conn, output_dir: Path) -> ExportResult:
         "concepts": concepts,
         "edges": edges,
     }
+    report_summaries, concept_report_backlinks = _build_report_index(reports)
     index_export = {
         "schema_version": SCHEMA_VERSION,
         "dates": list(reversed(report_dates)),
+        "reports": report_summaries,
+        "concept_report_backlinks": concept_report_backlinks,
     }
 
     _write_json(output_dir / "map.json", map_export)
@@ -114,7 +157,7 @@ def export_ledger(conn, output_dir: Path) -> ExportResult:
             "schema_version": SCHEMA_VERSION,
             "date": report["date"],
             "map_delta_text": report["map_delta_text"],
-            "topics": items.get("topics", []),
+            "topics": [_export_topic(topic) for topic in items.get("topics", [])],
             "meta": items.get("meta", {}),
         }
         _write_json(output_dir / "reports" / f"{report['date']}.json", report_export)

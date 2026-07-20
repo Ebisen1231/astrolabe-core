@@ -20,6 +20,19 @@ SYNTHESIS_SCHEMA = {
                     "summary": {"type": "string"},
                     "why_now": {"type": "string"},
                     "learn_content": {"type": "string"},
+                    "practice_task": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "title": {"type": "string"},
+                            "kind": {
+                                "type": "string",
+                                "enum": ["read", "implement", "quiz", "build_app_feature"],
+                            },
+                            "est_minutes": {"type": "integer"},
+                        },
+                        "required": ["title", "kind", "est_minutes"],
+                    },
                     "est_minutes": {"type": "integer"},
                     "source_urls": {"type": "array", "items": {"type": "string"}},
                     "related": {
@@ -44,6 +57,7 @@ SYNTHESIS_SCHEMA = {
                     "summary",
                     "why_now",
                     "learn_content",
+                    "practice_task",
                     "est_minutes",
                     "source_urls",
                     "related",
@@ -58,7 +72,8 @@ SYNTHESIS_SCHEMA = {
 SYSTEM_PROMPT = (
     "あなたは朝の学習報告の編集者。候補記事を今日知るべき3〜5件のトピックに統合し、"
     "各トピックに約10分で読める短い学習コンテンツを日本語で書く。"
-    "learn_content は箇条書き中心で400字以内、最後に10分でできる実践課題を1つ入れる。"
+    "learn_content は箇条書き中心で400字以内とし、実践課題は混ぜない。"
+    "practice_task に10〜30分でできる独立した実践課題を1つ入れる。"
     "related には前提概念(prerequisite)と関連概念(related)を挙げる。"
     "概念名は一般的な表記で安定させる(同じ概念に別名を作らない)。"
     "source_urls は与えられた候補の url からのみ選ぶ。"
@@ -107,6 +122,22 @@ def run_synthesis(llm, items: list[dict], profile: dict) -> dict:
         ]
         est = t.get("est_minutes")
         kind = t.get("kind")
+        raw_task = t.get("practice_task") or {}
+        task_kind = raw_task.get("kind")
+        task_minutes = raw_task.get("est_minutes")
+        practice_task = {
+            "title": str(raw_task.get("title", "")).strip(),
+            "kind": (
+                task_kind
+                if task_kind in ("read", "implement", "quiz", "build_app_feature")
+                else "read"
+            ),
+            "est_minutes": (
+                min(480, max(1, int(task_minutes)))
+                if isinstance(task_minutes, int)
+                else 10
+            ),
+        }
         topics.append(
             {
                 "name": str(t["name"]),
@@ -114,6 +145,7 @@ def run_synthesis(llm, items: list[dict], profile: dict) -> dict:
                 "summary": str(t.get("summary", "")),
                 "why_now": str(t.get("why_now", "")),
                 "learn_content": str(t.get("learn_content", "")),
+                "practice_task": practice_task,
                 "est_minutes": min(60, max(1, int(est))) if isinstance(est, int) else 10,
                 "source_urls": [str(u) for u in t.get("source_urls", [])],
                 "related": related,

@@ -302,3 +302,8 @@ def test_fixture_llm_triage_and_canary(fixtures_dir):
 
     synthesis = llm.structured("flagship", "daily_synthesis", SCHEMA, "sys", "{}", 100)
     assert len(synthesis["topics"]) == 3
+    assert synthesis["topics"][0]["practice_task"] == {
+        "title": "手元のRAGに合否判定プロンプトを1本足し、失敗例を3つ収集する",
+        "kind": "implement",
+        "est_minutes": 10,
+    }

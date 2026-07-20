@@ -53,6 +53,16 @@ def render_report(date: str, topics: list[dict], map_delta_text: str, meta: dict
             lines.append("  -- 学習コンテンツ --")
             for raw in t["learn_content"].splitlines():
                 lines.append(_wrap(raw.strip()) if raw.strip() else "")
+        practice_task = t.get("practice_task") or {}
+        if practice_task.get("title"):
+            lines.append("  -- 実践課題 --")
+            lines.append(
+                _wrap(
+                    f"{practice_task['title']} "
+                    f"({practice_task.get('kind', 'read')} / "
+                    f"{practice_task.get('est_minutes', '?')}分)"
+                )
+            )
         related = ", ".join(
             f"{r.get('name')}({r.get('type')})" for r in t.get("related", [])
         )

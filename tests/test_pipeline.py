@@ -49,6 +49,7 @@ def test_morning_end_to_end(ledger, fixtures_dir):
     assert "ASTROLABE 朝の観測報告" in text
     assert "[dry-run]" in text
     assert "検証器つきRAG" in text
+    assert "-- 実践課題 --" in text
     assert "マップ差分" in text
     assert "トークン使用" in text
 
@@ -68,6 +69,8 @@ def test_morning_end_to_end(ledger, fixtures_dir):
     # 報告アーカイブ
     row = ledger.execute("SELECT date FROM daily_reports").fetchone()
     assert row["date"] == TODAY
+    stored = ledger.execute("SELECT items FROM daily_reports").fetchone()["items"]
+    assert '"practice_task"' in stored
 
 
 def test_morning_writes_html_and_records_relative_path(ledger, fixtures_dir, tmp_path):

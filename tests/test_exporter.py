@@ -69,6 +69,11 @@ def _seed_ledger(conn):
                     "summary": "ツールを使って目標を進める。",
                     "why_now": "実装段階だから。",
                     "learn_content": "観測・判断・行動に分解する。",
+                    "practice_task": {
+                        "title": "小さなツール呼び出しを1本実装する",
+                        "kind": "implement",
+                        "est_minutes": 20,
+                    },
                     "source_urls": ["https://example.com/agents"],
                 }
             ],
@@ -101,7 +106,27 @@ def test_export_contract_and_report_date_today_nodes(ledger, tmp_path):
     assert map_data["concepts"][0].keys() >= {"summary", "source_urls", "first_seen"}
 
     index_data = json.loads((out / "index.json").read_text(encoding="utf-8"))
-    assert index_data == {
+    assert index_data["schema_version"] == 1
+    assert index_data["dates"] == ["2026-07-19", "2026-07-18"]
+    assert index_data["reports"][0] == {
+        "date": "2026-07-19",
+        "map_delta_text": "エージェントのノードが加わった。",
+        "topics": [
+            {
+                "concept_id": "llmエージェント",
+                "name": "LLMエージェント",
+                "summary": "ツールを使って目標を進める。",
+            }
+        ],
+    }
+    assert index_data["concept_report_backlinks"] == {
+        "llmエージェント": [
+            {"date": "2026-07-19", "topic_name": "LLMエージェント"}
+        ],
+        "rag": [{"date": "2026-07-18", "topic_name": "RAG"}],
+    }
+    # v1の旧readersが参照する既存キーは完全に維持する。
+    assert {key: index_data[key] for key in ("schema_version", "dates")} == {
         "schema_version": 1,
         "dates": ["2026-07-19", "2026-07-18"],
     }
@@ -109,8 +134,16 @@ def test_export_contract_and_report_date_today_nodes(ledger, tmp_path):
         (out / "reports" / "2026-07-19.json").read_text(encoding="utf-8")
     )
     assert report["schema_version"] == 1
+    assert report["topics"][0]["concept_id"] == "llmエージェント"
     assert report["topics"][0]["learn_content"].startswith("観測")
-    assert json.loads((out / "layout.json").read_text())["schema_version"] == 1
+    assert report["topics"][0]["practice_task"]["kind"] == "implement"
+    old_report = json.loads(
+        (out / "reports" / "2026-07-18.json").read_text(encoding="utf-8")
+    )
+    assert "practice_task" not in old_report["topics"][0]
+    layout_data = json.loads((out / "layout.json").read_text())
+    assert set(layout_data) == {"schema_version", "positions"}
+    assert layout_data["schema_version"] == 1
 
 
 def test_two_consecutive_exports_are_byte_identical_for_every_file(ledger, tmp_path):

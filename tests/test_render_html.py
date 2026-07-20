@@ -15,6 +15,11 @@ TOPICS = [
         "summary": "生成後に根拠を検証する。",
         "why_now": "エージェントの信頼性に直結する。",
         "learn_content": "- 取得\n- 検証\n- 修正",
+        "practice_task": {
+            "title": "失敗例を3件集める <script>alert(2)</script>",
+            "kind": "implement",
+            "est_minutes": 10,
+        },
         "est_minutes": 10,
         "source_urls": ["https://example.com/paper?a=1&b=2", "javascript:alert(1)"],
     }
@@ -71,6 +76,8 @@ def test_html_contains_star_map_feedback_and_escaped_content():
     assert "<script>alert(1)</script>" not in output
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in output
     assert "javascript:alert(1)" not in output
+    assert "失敗例を3件集める" in output
+    assert "<script>alert(2)</script>" not in output
     assert "\\u003cscript\\u003e" not in output  # topic labelはHTMLエスケープされる
 
 

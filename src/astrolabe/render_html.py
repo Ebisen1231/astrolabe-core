@@ -108,6 +108,13 @@ def _topic_html(topic: dict, report_date: str, repository: str) -> str:
             '<div class="learn"><h3>学習コンテンツ</h3>',
             f'<div class="learn-content">{html.escape(str(topic.get("learn_content", "")))}</div>',
             f'<p class="minutes">目安 {html.escape(str(topic.get("est_minutes", 10)))}分</p></div>',
+            (
+                '<div class="practice-task"><h3>実践課題</h3>'
+                f'<p>{html.escape(str((topic.get("practice_task") or {}).get("title", "")))}</p>'
+                "</div>"
+                if (topic.get("practice_task") or {}).get("title")
+                else ""
+            ),
             source_block,
             '<nav class="feedbacks" aria-label="このトピックへのフィードバック">',
             "".join(feedback),
