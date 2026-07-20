@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Annotated
 from zoneinfo import ZoneInfo
 
+import httpx
 import typer
 
 from astrolabe import exporter, publishing, render
@@ -36,13 +37,20 @@ from astrolabe.ledger.supabase import SupabaseLedger
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.client import FatalLLMError, LLMCallError, ResponsesLLM, classify_error
 from astrolabe.llm.fixtures import FixtureLLM
-from astrolabe.notify_discord import send_discord_report
+from astrolabe.notify_discord import send_discord_report, send_weekly_review
 from astrolabe.pipeline import morning as morning_mod
 from astrolabe.tutor.engine import TutorEngineError
 from astrolabe.tutor.runtime import LocalTutorRuntime
 from astrolabe.tutor.server import LOOPBACK_HOST, serve_tutor
+from astrolabe.weekly_review import (
+    GitHubImprovementClient,
+    PrivacyViolation,
+    WeeklyBudgetGuard,
+    WeeklyReviewError,
+    run_weekly_review,
+)
 
-app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M3)")
+app = typer.Typer(add_completion=False, help="Astrolabe — 学習観測エージェント(M4)")
 log = logging.getLogger("astrolabe")
 REPORT_TIME_ZONE = ZoneInfo("Asia/Tokyo")
 
@@ -599,6 +607,78 @@ def notify_discord() -> None:
         typer.echo(f"Discord通知完了: {html_path.name}")
 
 
+@app.command("weekly-review")
+def weekly_review_command(
+    report_date: Annotated[
+        str | None,
+        typer.Option(
+            "--date",
+            help="開発用の週末日YYYY-MM-DD。本番台帳では明示的な許可が必要",
+        ),
+    ] = None,
+) -> None:
+    """直近7日の傾向からprivate Issue発注書と改善学習タスクを作る。"""
+    today = _resolve_report_date(report_date)
+    config = _load_config_or_fail(require_ledger=True, require_flagship=True)
+    if report_date is not None and not config.allow_date_override:
+        _fail(
+            "本番台帳への合成日付混入を防ぐため--dateを拒否した。"
+            "開発台帳だけでASTROLABE_ALLOW_DATE_OVERRIDE=1を設定する",
+            2,
+        )
+    if not config.github_token:
+        _fail("環境変数が未設定: GITHUB_TOKEN", 2)
+    if not config.discord_webhook_url:
+        _fail("環境変数が未設定: DISCORD_WEBHOOK_URL", 2)
+    conn = _open_ledger_or_fail(config)
+    issue_client = GitHubImprovementClient(
+        config.github_token,
+        config.ledger_repository,
+    )
+    run_id = f"weekly-{config.run_id}"
+    try:
+        guard = WeeklyBudgetGuard(
+            conn,
+            today,
+            run_id,
+            total_cap=config.max_flagship_tokens,
+        )
+        budget = TokenBudget({"flagship": config.max_flagship_tokens})
+        llm = ResponsesLLM(
+            api_key=config.api_key or "",
+            models={"flagship": config.model_flagship or ""},
+            budget=budget,
+            logger=log,
+            attempt_precheck=guard.attempt_precheck,
+            usage_observer=guard.record_usage,
+        )
+        llm.canary("flagship")
+        result = run_weekly_review(
+            conn,
+            llm,
+            issue_client,
+            lambda summary, issues: send_weekly_review(
+                config.discord_webhook_url or "", summary, issues
+            ),
+            today=today,
+        )
+    except PrivacyViolation as exc:
+        _fail(f"プライバシーガードにより週次提案を破棄: {exc}", 1)
+    except BudgetExceededError as exc:
+        _fail(str(exc), 3)
+    except (FatalLLMError, LLMCallError, WeeklyReviewError) as exc:
+        _fail(f"週次自己改修に失敗: {exc}", 1)
+    except (LedgerBackendError, httpx.HTTPError) as exc:
+        _fail(f"週次自己改修の外部処理に失敗: {exc}", 2)
+    finally:
+        issue_client.close()
+        conn.close()
+    typer.echo(
+        f"週次自己改修完了: issue新規 {result.created_issues} / "
+        f"task新規 {result.created_tasks} / 提案 {len(result.proposal_keys)}"
+    )
+
+
 @app.command()
 def report(
     date: Annotated[
@@ -619,7 +699,11 @@ def report(
     items = row["items"]
     typer.echo(
         render.render_report(
-            row["date"], items.get("topics", []), row["map_delta_text"], items.get("meta", {})
+            row["date"],
+            items.get("topics", []),
+            row["map_delta_text"],
+            items.get("meta", {}),
+            reviews=items.get("reviews", []),
         )
     )
 

@@ -9,8 +9,11 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from astrolabe.cli import _resolve_report_date, app
-from astrolabe.ledger import db, store
+from astrolabe.ledger import db, events, review, store
 from astrolabe.ledger.backend import LedgerBackendError
+from astrolabe.llm.fixtures import FixtureLLM
+from astrolabe.pipeline.morning import collect_items as collect_fixture_items
+from astrolabe.tutor.tools import TutorTools
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 runner = CliRunner()
@@ -278,6 +281,62 @@ def test_morning_supabase_failure_is_visible_without_sqlite_fallback(monkeypatch
     assert result.exit_code == 2
     assert "SQLiteへはフォールバックしない" in all_output(result)
     assert ledger.closed
+
+
+def test_development_date_override_drives_multi_day_review_cycle(tmp_path, monkeypatch):
+    ledger_path = tmp_path / "dev-ledger.db"
+    monkeypatch.setenv("ASTROLABE_LEDGER_PATH", str(ledger_path))
+    monkeypatch.setenv("ASTROLABE_ARTIFACT_ROOT", str(tmp_path))
+    monkeypatch.setenv("ASTROLABE_ALLOW_DATE_OVERRIDE", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", "fixture-key")
+    monkeypatch.setenv("ASTROLABE_MODEL_MINI", "fixture-mini")
+    monkeypatch.setenv("ASTROLABE_MODEL_FLAGSHIP", "fixture-flagship")
+    assert runner.invoke(app, ["init"]).exit_code == 0
+
+    conn = db.open_ledger(ledger_path)
+    try:
+        TutorTools(
+            conn,
+            now=lambda: datetime(2026, 7, 1, 0, 0, tzinfo=UTC),
+        ).quiz("grade", "rag", "RAG", "Q", ["A", "B"], "A", 0.8, "ok", 3)
+        assert events.load_events(conn)[0]["payload"]["grade"] == 3
+        assert review.review_schedule(events.load_events(conn), "2026-07-02")[0][
+            "is_due"
+        ]
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        "astrolabe.cli.ResponsesLLM",
+        lambda **kwargs: FixtureLLM(FIXTURES_DIR, kwargs["budget"]),
+    )
+    monkeypatch.setattr(
+        "astrolabe.cli.morning_mod.collect_items",
+        lambda config, **kwargs: collect_fixture_items(
+            config, offline_dir=FIXTURES_DIR
+        ),
+    )
+    due = runner.invoke(app, ["morning", "--date", "2026-07-02"])
+    assert due.exit_code == 0, all_output(due)
+    assert "今日の復習" in due.output
+
+    conn = db.open_ledger(ledger_path)
+    try:
+        TutorTools(
+            conn,
+            now=lambda: datetime(2026, 7, 2, 0, 0, tzinfo=UTC),
+        ).quiz("grade", "rag", "RAG", "Q", ["A", "B"], "A", 1.0, "easy", 4)
+        schedule = review.review_schedule(events.load_events(conn), "2026-07-09")
+        assert schedule[0]["due_date"] == "2026-07-09"
+    finally:
+        conn.close()
+
+    early = runner.invoke(app, ["morning", "--date", "2026-07-08"])
+    assert early.exit_code == 0, all_output(early)
+    assert "今日の復習" not in early.output
+    due_again = runner.invoke(app, ["morning", "--date", "2026-07-09"])
+    assert due_again.exit_code == 0, all_output(due_again)
+    assert "今日の復習" in due_again.output
 
 
 # --- export ---------------------------------------------------------------

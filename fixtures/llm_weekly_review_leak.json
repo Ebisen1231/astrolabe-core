@@ -1,0 +1,13 @@
+{
+  "summary": "RAGの学習記録 https://secret.example/note をそのまま改善へ使う。",
+  "proposals": [
+    {
+      "title": "RAGの表示を変える",
+      "problem": "検索画面が使いにくいので改善してほしいという原文メモを引用する。",
+      "requirements": ["https://secret.example/note を表示する"],
+      "acceptance_criteria": ["原文がIssueに残る"],
+      "task_title": "RAG表示を直す",
+      "est_minutes": 30
+    }
+  ]
+}

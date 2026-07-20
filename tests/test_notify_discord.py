@@ -52,6 +52,19 @@ def test_build_discord_embed_truncates_description_and_field(fixtures_dir):
     assert embed["fields"][0]["value"].endswith("…")
 
 
+def test_build_discord_embed_appends_due_reviews(fixtures_dir):
+    report = deepcopy(load_report(fixtures_dir))
+    report["items"]["reviews"] = [
+        {"concept_id": "rag", "concept_name": "RAG", "due_date": "2026-07-20"}
+    ]
+    embed = build_discord_embed(report)
+    assert embed["fields"][-1] == {
+        "name": "今日の復習",
+        "value": "• RAG (期日 2026-07-20)",
+        "inline": False,
+    }
+
+
 def test_send_discord_attaches_html_with_embed(fixtures_dir, tmp_path):
     report = load_report(fixtures_dir)
     html_path = tmp_path / "2026-07-18.html"

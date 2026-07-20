@@ -42,6 +42,7 @@ def _usage_text(report: dict) -> str:
 def build_discord_embed(report: dict) -> dict:
     """日次報告をDiscord embedの上限内で決定的に整形する。"""
     topics = report.get("items", {}).get("topics", [])
+    reviews = report.get("items", {}).get("reviews", [])
     date = str(report.get("date", ""))
     map_delta = str(report.get("map_delta_text", ""))
     description_parts = [date] if date else []
@@ -51,7 +52,8 @@ def build_discord_embed(report: dict) -> dict:
         description_parts.append("今日の提案: 新規トピックなし")
 
     fields = []
-    for topic in topics[:MAX_FIELDS]:
+    topic_limit = MAX_FIELDS - 1 if reviews else MAX_FIELDS
+    for topic in topics[:topic_limit]:
         name = _truncate(str(topic.get("name", "無題")) or "無題", FIELD_NAME_LIMIT)
         summary = str(topic.get("summary", ""))[:SUMMARY_LIMIT]
         source_urls = topic.get("source_urls", [])
@@ -63,6 +65,20 @@ def build_discord_embed(report: dict) -> dict:
             {
                 "name": name,
                 "value": _truncate(value or "要約なし", FIELD_VALUE_LIMIT),
+                "inline": False,
+            }
+        )
+
+    if reviews:
+        value = "\n".join(
+            f"• {row.get('concept_name', row.get('concept_id', ''))} "
+            f"(期日 {row.get('due_date', '?')})"
+            for row in reviews[:5]
+        )
+        fields.append(
+            {
+                "name": "今日の復習",
+                "value": _truncate(value, FIELD_VALUE_LIMIT),
                 "inline": False,
             }
         )
@@ -123,4 +139,57 @@ def send_discord_report(
                     continue
                 break
     logger.warning("Discord通知に失敗。朝ジョブは継続: %s", last_error)
+    return False
+
+
+def send_weekly_review(
+    webhook_url: str,
+    summary: str,
+    issues: list[dict],
+    *,
+    timeout: float = 20.0,
+    transport: httpx.BaseTransport | None = None,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> bool:
+    """週次提案の要約とprivate Issueリンクを通知する。リトライは1回。"""
+    if not webhook_url:
+        return False
+    fields = [
+        {
+            "name": _truncate(str(issue.get("title", "改善提案")), FIELD_NAME_LIMIT),
+            "value": _truncate(str(issue.get("url", "")), FIELD_VALUE_LIMIT),
+            "inline": False,
+        }
+        for issue in issues[:3]
+    ]
+    payload = {
+        "embeds": [
+            {
+                "title": "Astrolabe 週次自己改修ドラフト",
+                "description": _truncate(summary, DESCRIPTION_LIMIT),
+                "fields": fields,
+            }
+        ]
+    }
+    with httpx.Client(timeout=timeout, transport=transport) as client:
+        for attempt in range(2):
+            try:
+                response = client.post(webhook_url, json=payload)
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        f"一時的なDiscordエラー: {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                response.raise_for_status()
+                return True
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                retryable = isinstance(exc, httpx.TransportError) or (
+                    isinstance(exc, httpx.HTTPStatusError)
+                    and (exc.response.status_code == 429 or exc.response.status_code >= 500)
+                )
+                if attempt == 0 and retryable:
+                    sleeper(2.0)
+                    continue
+                return False
     return False
