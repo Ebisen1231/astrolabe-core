@@ -27,3 +27,23 @@ def test_ledger_workflow_reference_has_m3_supabase_snapshot_and_minimal_permissi
     assert "notify-discord" in text
     assert "LEDGER_ISSUES_TOKEN" not in text
     assert "DEPLOY_KEY" not in text
+    assert "group: astrolabe-ledger-write" in text
+
+
+def test_weekly_review_reference_is_draft_only_private_and_serialized():
+    path = Path(__file__).resolve().parent.parent / "docs" / "weekly-review.workflow.yml"
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# REFERENCE COPY ONLY")
+    assert 'cron: "30 1 * * 1"' in text
+    assert "workflow_dispatch" in text
+    assert "group: astrolabe-ledger-write" in text
+    assert "cancel-in-progress: false" in text
+    assert "issues: write" in text
+    assert "contents: write" in text
+    assert "astrolabe weekly-review" in text
+    assert "astrolabe snapshot" in text
+    assert "DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}" in text
+    assert "codex exec" not in text
+    assert "CODEX" not in text
+    assert "pull_request" not in text
+    assert "ASTROLABE_ALLOW_DATE_OVERRIDE" not in text

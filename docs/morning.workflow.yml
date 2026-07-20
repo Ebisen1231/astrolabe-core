@@ -12,7 +12,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: astrolabe-morning
+  group: astrolabe-ledger-write
   cancel-in-progress: false
 
 jobs:

@@ -1,0 +1,73 @@
+# REFERENCE COPY ONLY — 実体はprivateの Ebisen1231/astrolabe-ledger 側に置く。
+# 月曜10:30 JST (01:30 UTC): 朝ジョブから4時間、無料枠リセットから1.5時間後。
+name: Astrolabe weekly review
+
+on:
+  schedule:
+    - cron: "30 1 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: astrolabe-ledger-write
+  cancel-in-progress: false
+
+jobs:
+  weekly-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ASTROLABE_BACKEND: supabase
+      ASTROLABE_ARTIFACT_ROOT: ${{ github.workspace }}
+      ASTROLABE_LEDGER_REPOSITORY: Ebisen1231/astrolabe-ledger
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ASTROLABE_MODEL_FLAGSHIP: gpt-5.6-sol
+
+    steps:
+      - name: Checkout private ledger
+        uses: actions/checkout@v4
+
+      - name: Checkout public core
+        uses: actions/checkout@v4
+        with:
+          repository: Ebisen1231/astrolabe-core
+          path: core
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install core
+        working-directory: core
+        run: uv sync --frozen
+
+      - name: Generate private improvement drafts and tasks
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: core/.venv/bin/astrolabe weekly-review
+
+      - name: Snapshot primary events
+        run: core/.venv/bin/astrolabe snapshot
+
+      - name: Persist weekly snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- snapshots/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: weekly review ${GITHUB_RUN_ID}"
+            git push
+          fi
