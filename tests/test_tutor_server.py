@@ -10,6 +10,7 @@ class StubRuntime:
     def __init__(self):
         self.turns = []
         self.completions = []
+        self.created = []
 
     def turn(self, history, session_id):
         self.turns.append((history, session_id))
@@ -22,6 +23,10 @@ class StubRuntime:
 
     def list_tasks(self):
         return [{"id": 1, "title": "read", "status": "open"}]
+
+    def create_task(self, concept_id, concept_name, title, kind, est_minutes, edges):
+        self.created.append((concept_id, concept_name, title, kind, est_minutes, edges))
+        return {"type": "task_created", "task": {"id": 2, "status": "open"}}
 
     def complete_task(self, task_id, evidence, confidence_delta=0.2):
         self.completions.append((task_id, evidence, confidence_delta))
@@ -85,6 +90,23 @@ def test_turn_tasks_and_complete_routes():
     tasks = _handler(runtime, "/v1/tasks")
     tasks.do_GET()
     assert _json_body(tasks)["tasks"][0]["status"] == "open"
+
+    create = _handler(
+        runtime,
+        "/v1/tasks",
+        payload={
+            "concept_id": "リランキング",
+            "concept_name": "リランキング",
+            "title": "結果を並べ替える",
+            "kind": "implement",
+            "est_minutes": 10,
+            "edges": [],
+        },
+    )
+    create.do_POST()
+    assert create.response_status == 201
+    assert _json_body(create)["task"]["status"] == "open"
+    assert runtime.created[0][3] == "implement"
 
     complete = _handler(
         runtime,

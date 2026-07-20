@@ -22,6 +22,16 @@ class TutorRuntime(Protocol):
 
     def list_tasks(self) -> list[dict]: ...
 
+    def create_task(
+        self,
+        concept_id: str,
+        concept_name: str,
+        title: str,
+        kind: str,
+        est_minutes: int,
+        edges: list[dict],
+    ) -> dict: ...
+
     def complete_task(
         self, task_id: int, evidence: str, confidence_delta: float = 0.2
     ) -> dict: ...
@@ -109,6 +119,25 @@ class TutorRequestHandler(BaseHTTPRequestHandler):
                 if not isinstance(history, list) or not isinstance(session_id, str):
                     raise ValueError("history配列とsession_id文字列が必要")
                 self._send_json(200, self.runtime.turn(history, session_id))
+                return
+            if self.path == "/v1/tasks":
+                concept_id = body.get("concept_id")
+                concept_name = body.get("concept_name")
+                title = body.get("title")
+                kind = body.get("kind")
+                est_minutes = body.get("est_minutes")
+                edges = body.get("edges", [])
+                if not all(
+                    isinstance(value, str)
+                    for value in (concept_id, concept_name, title, kind)
+                ) or not isinstance(est_minutes, int) or not isinstance(edges, list):
+                    raise ValueError("taskの入力が不正")
+                self._send_json(
+                    201,
+                    self.runtime.create_task(
+                        concept_id, concept_name, title, kind, est_minutes, edges
+                    ),
+                )
                 return
             match = TASK_COMPLETE_PATH.match(self.path)
             if match:

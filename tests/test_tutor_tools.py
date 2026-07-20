@@ -115,3 +115,10 @@ def test_conversation_is_not_implicitly_recorded(ledger):
 def test_complete_task_requires_evidence(ledger):
     with pytest.raises(TutorToolError, match="evidence"):
         _tools(ledger).complete_task(1, "", 0.2)
+
+
+def test_create_task_rejects_kind_outside_server_allowlist(ledger):
+    with pytest.raises(TutorToolError, match="task kind"):
+        _tools(ledger).create_task(
+            "rag", "RAG", "危険なタスク", "shell", 10, []
+        )

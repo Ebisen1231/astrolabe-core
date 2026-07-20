@@ -37,6 +37,20 @@ class StubRuntime:
     def list_tasks(self):
         return [{"id": 1, "status": "open"}]
 
+    def create_task(self, concept_id, concept_name, title, kind, est_minutes, edges):
+        if kind not in {"read", "implement", "quiz", "build_app_feature"}:
+            raise ValueError("invalid task kind")
+        return {
+            "type": "task_created",
+            "task": {
+                "id": 2,
+                "concept_id": concept_id,
+                "title": title,
+                "kind": kind,
+                "status": "open",
+            },
+        }
+
     def turn(self, history, session_id):
         if self.error:
             raise self.error
@@ -74,10 +88,46 @@ def _request(monkeypatch, path, *, method="GET", body=None, origin=ORIGIN, auth=
     return instance, value, auth
 
 
-def test_all_data_routes_require_auth_with_uniform_401(monkeypatch):
+@pytest.mark.parametrize(
+    ("path", "method", "body"),
+    [
+        ("/v1/map", "GET", None),
+        ("/v1/layout", "GET", None),
+        ("/v1/index", "GET", None),
+        ("/v1/reports/2026-07-19", "GET", None),
+        ("/v1/tasks", "GET", None),
+        (
+            "/v1/tasks",
+            "POST",
+            {
+                "concept_id": "リランキング",
+                "concept_name": "リランキング",
+                "title": "結果を並べ替える",
+                "kind": "implement",
+                "est_minutes": 10,
+                "edges": [],
+            },
+        ),
+        (
+            "/v1/tasks/1/complete",
+            "POST",
+            {"evidence": "note", "confidence_delta": 0.2},
+        ),
+        (
+            "/v1/tutor/turn",
+            "POST",
+            {"session_id": "tutor-browser", "history": []},
+        ),
+    ],
+)
+def test_all_data_routes_require_auth_with_uniform_401(
+    monkeypatch, path, method, body
+):
     instance, value, _ = _request(
         monkeypatch,
-        "/v1/map",
+        path,
+        method=method,
+        body=body,
         auth=StubAuth(AuthenticationError("owner mismatch at secret URL")),
     )
     assert instance.response_status == 401
@@ -94,12 +144,46 @@ def test_authenticated_artifact_tasks_and_tutor_routes(monkeypatch):
         method="POST",
         body={"session_id": "tutor-browser", "history": [{"role": "user", "content": "x"}]},
     )
+    create_response, create_value, create_auth = _request(
+        monkeypatch,
+        "/v1/tasks",
+        method="POST",
+        body={
+            "concept_id": "リランキング",
+            "concept_name": "リランキング",
+            "title": "結果を並べ替える",
+            "kind": "implement",
+            "est_minutes": 10,
+            "edges": [],
+        },
+    )
     assert map_response.response_status == 200
     assert map_value["key"] == "map"
     assert tasks_response.response_status == 200
     assert tasks_value["tasks"][0]["status"] == "open"
     assert tutor_response.response_status == 200
     assert tutor_value["message"] == "ok"
+    assert create_response.response_status == 201
+    assert create_value["task"]["concept_id"] == "リランキング"
+    assert create_auth.headers == ["Bearer token"]
+
+
+def test_create_task_rejects_kind_outside_allowlist(monkeypatch):
+    instance, value, _ = _request(
+        monkeypatch,
+        "/v1/tasks",
+        method="POST",
+        body={
+            "concept_id": "rag",
+            "concept_name": "RAG",
+            "title": "run arbitrary action",
+            "kind": "shell",
+            "est_minutes": 10,
+            "edges": [],
+        },
+    )
+    assert instance.response_status == 400
+    assert value == {"error": "invalid_request"}
 
 
 def test_error_body_never_contains_exception_details(monkeypatch):

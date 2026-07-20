@@ -86,6 +86,23 @@ class LocalTutorRuntime:
         finally:
             ledger.close()
 
+    def create_task(
+        self,
+        concept_id: str,
+        concept_name: str,
+        title: str,
+        kind: str,
+        est_minutes: int,
+        edges: list[dict],
+    ) -> dict:
+        ledger = open_configured_ledger(self.config)
+        try:
+            return TutorTools(ledger, now=self._now).create_task(
+                concept_id, concept_name, title, kind, est_minutes, edges
+            )
+        finally:
+            ledger.close()
+
     def complete_task(
         self, task_id: int, evidence: str, confidence_delta: float = 0.2
     ) -> dict:

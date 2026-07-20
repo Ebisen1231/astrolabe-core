@@ -66,6 +66,19 @@ class PublicApiRuntime:
     def list_tasks(self) -> list[dict]:
         return self.tutor.list_tasks()
 
+    def create_task(
+        self,
+        concept_id: str,
+        concept_name: str,
+        title: str,
+        kind: str,
+        est_minutes: int,
+        edges: list[dict],
+    ) -> dict:
+        return self.tutor.create_task(
+            concept_id, concept_name, title, kind, est_minutes, edges
+        )
+
     def complete_task(self, task_id: int, evidence: str, confidence_delta: float) -> dict:
         return self.tutor.complete_task(task_id, evidence, confidence_delta)
 
