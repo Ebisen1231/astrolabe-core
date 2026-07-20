@@ -33,6 +33,7 @@ def test_all_function_schemas_are_strict_and_closed():
         "record_feedback",
         "create_task",
         "complete_task",
+        "get_due_reviews",
         "quiz",
         "update_profile",
     }
@@ -84,11 +85,36 @@ def test_quiz_ask_does_not_write_but_grade_updates_confidence(ledger):
         "座標",
         0.9,
         "正解",
+        3,
     )
     assert graded["type"] == "quiz_result"
-    assert events.load_events(ledger)[0]["payload"]["user_answer"] == "座標"
+    payload = events.load_events(ledger)[0]["payload"]
+    assert payload["user_answer"] == "座標"
+    assert payload["grade"] == 3
     concept = store.list_concepts(ledger)[0]
     assert (concept["status"], concept["confidence"]) == ("learned", 0.9)
+
+
+@pytest.mark.parametrize("grade", [None, 0, 5, True])
+def test_quiz_grade_requires_fsrs_compatible_rating(ledger, grade):
+    with pytest.raises(TutorToolError, match="grade 1..4"):
+        _tools(ledger).quiz(
+            "grade", "rag", "RAG", "Q", ["A", "B"], "A", 0.8, "feedback", grade
+        )
+
+
+def test_get_due_reviews_reads_deterministic_schedule(ledger):
+    events.append_event(
+        ledger,
+        "marked_known",
+        "rag",
+        {"name": "RAG"},
+        ts="2026-07-01T00:00:00+09:00",
+    )
+    result = _tools(ledger).get_due_reviews(5)
+    assert result["type"] == "due_reviews"
+    assert result["reviews"][0]["concept_name"] == "RAG"
+    assert result["reviews"][0]["due_date"] == "2026-07-08"
 
 
 def test_update_profile_is_atomic_with_interview_event(ledger):

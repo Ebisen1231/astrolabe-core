@@ -22,7 +22,14 @@ def _usage_line(usage: dict) -> str:
     return " | ".join(parts)
 
 
-def render_report(date: str, topics: list[dict], map_delta_text: str, meta: dict) -> str:
+def render_report(
+    date: str,
+    topics: list[dict],
+    map_delta_text: str,
+    meta: dict,
+    *,
+    reviews: list[dict] | None = None,
+) -> str:
     lines: list[str] = []
     tag = "  [dry-run]" if meta.get("dry_run") else ""
     lines.append("=" * _WIDTH)
@@ -70,6 +77,18 @@ def render_report(date: str, topics: list[dict], map_delta_text: str, meta: dict
             lines.append(_wrap("関連: " + related))
         for url in t.get("source_urls", []):
             lines.append(f"  出典: {url}")
+        lines.append("")
+
+    if reviews:
+        lines.append("【今日の復習】")
+        for row in reviews:
+            lines.append(
+                _wrap(
+                    f"- {row.get('concept_name', row.get('concept_id', ''))} "
+                    f"(期日 {row.get('due_date', '?')} / 間隔 {row.get('interval_days', '?')}日)",
+                    indent="  ",
+                )
+            )
         lines.append("")
 
     lines.append("-" * _WIDTH)

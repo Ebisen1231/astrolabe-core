@@ -241,6 +241,10 @@ HTML_TEMPLATE = Template(
     .feedback:hover, .feedback:focus-visible { border-color: var(--gold); color: var(--gold); }
     .empty { color: var(--text-muted); border: 1px dashed var(--divider); padding: 24px;
       border-radius: 12px; }
+    .reviews { border: 1px solid var(--divider); border-left: 3px solid var(--gold);
+      border-radius: 12px; padding: 20px 24px; margin-top: 28px; }
+    .reviews h2 { margin: 0 0 8px; font-size: 20px; }
+    .reviews ul { margin: 0; padding-left: 20px; color: var(--text-muted); }
     footer { color: var(--text-muted); font-size: 12px; margin-top: 40px;
       border-top: 1px solid var(--divider); padding-top: 16px; }
     @media (max-width: 640px) { main { width: min(100% - 20px, 1120px); padding-top: 28px; }
@@ -268,6 +272,7 @@ HTML_TEMPLATE = Template(
       <h2 class="topics-heading" id="topics-heading">今日の提案</h2>
       <div class="topic-grid">$topics_html</div>
     </section>
+    $reviews_section
     <footer>生成は決定的コードで行い、LLMにはHTMLを作らせていません。</footer>
   </main>
   <script type="application/json" id="astrolabe-elements">$elements_json</script>
@@ -317,17 +322,35 @@ def render_html_report(
     concepts: list[dict],
     edges: list[dict],
     *,
+    reviews: list[dict] | None = None,
     repository: str = DEFAULT_LEDGER_REPOSITORY,
 ) -> str:
     """報告データから単一HTML文字列を返す。"""
     topics_html = "".join(_topic_html(t, report_date, repository) for t in topics)
     if not topics_html:
         topics_html = '<p class="empty">本日の新規トピックはありません。</p>'
+    reviews_section = ""
+    if reviews:
+        rows = "".join(
+            "<li>"
+            + html.escape(str(row.get("concept_name", row.get("concept_id", ""))))
+            + " — 期日 "
+            + html.escape(str(row.get("due_date", "")))
+            + " / 間隔 "
+            + html.escape(str(row.get("interval_days", "?")))
+            + "日</li>"
+            for row in reviews
+        )
+        reviews_section = (
+            '<section class="reviews" aria-labelledby="reviews-heading">'
+            '<h2 id="reviews-heading">今日の復習</h2><ul>' + rows + "</ul></section>"
+        )
     return HTML_TEMPLATE.substitute(
         report_date=html.escape(report_date),
         cytoscape_cdn=html.escape(CYTOSCAPE_CDN, quote=True),
         map_delta_text=html.escape(map_delta_text or "変化はまだありません。"),
         topics_html=topics_html,
+        reviews_section=reviews_section,
         elements_json=_embedded_json(_cytoscape_elements(concepts, edges, topics)),
     )
 
@@ -340,6 +363,7 @@ def write_html_report(
     concepts: list[dict],
     edges: list[dict],
     *,
+    reviews: list[dict] | None = None,
     repository: str = DEFAULT_LEDGER_REPOSITORY,
 ) -> Path:
     """`output_dir/YYYY-MM-DD.html`へ原子的に保存してパスを返す。"""
@@ -353,6 +377,7 @@ def write_html_report(
             map_delta_text,
             concepts,
             edges,
+            reviews=reviews,
             repository=repository,
         ),
         encoding="utf-8",

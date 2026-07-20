@@ -102,6 +102,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         ),
     ),
     _tool(
+        "get_due_reviews",
+        "復習依頼を受けたとき、期日到来した概念を期日順に取得する。",
+        _object(
+            {"limit": {"type": "integer", "minimum": 1, "maximum": 5}},
+            ["limit"],
+        ),
+    ),
+    _tool(
         "quiz",
         "選択肢クイズを構造化して出題するか、利用者の回答を採点してquiz_resultを記録する。",
         _object(
@@ -118,6 +126,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "user_answer": {"type": "string"},
                 "score": {"type": "number", "minimum": 0, "maximum": 1},
+                "grade": {
+                    "type": ["integer", "null"],
+                    "enum": [1, 2, 3, 4, None],
+                },
                 "feedback": {"type": "string"},
             },
             [
@@ -128,6 +140,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "options",
                 "user_answer",
                 "score",
+                "grade",
                 "feedback",
             ],
         ),

@@ -77,6 +77,19 @@ def _seed_ledger(conn):
                     "source_urls": ["https://example.com/agents"],
                 }
             ],
+            "reviews": [
+                {
+                    "concept_id": "rag",
+                    "concept_name": "RAG",
+                    "grade": 3,
+                    "due_date": "2026-07-19",
+                    "interval_days": 3,
+                    "repetitions": 2,
+                    "ease": 2.5,
+                    "reviewed_at": "2026-07-16T00:00:00+09:00",
+                    "is_due": True,
+                }
+            ],
             "meta": {"usage": {"flagship": {"used": 20, "cap": 200}}},
         },
         "エージェントのノードが加わった。",
@@ -137,10 +150,13 @@ def test_export_contract_and_report_date_today_nodes(ledger, tmp_path):
     assert report["topics"][0]["concept_id"] == "llmエージェント"
     assert report["topics"][0]["learn_content"].startswith("観測")
     assert report["topics"][0]["practice_task"]["kind"] == "implement"
+    assert report["reviews"][0]["concept_id"] == "rag"
+    assert report["schema_version"] == 1
     old_report = json.loads(
         (out / "reports" / "2026-07-18.json").read_text(encoding="utf-8")
     )
     assert "practice_task" not in old_report["topics"][0]
+    assert old_report["reviews"] == []
     layout_data = json.loads((out / "layout.json").read_text())
     assert set(layout_data) == {"schema_version", "positions"}
     assert layout_data["schema_version"] == 1

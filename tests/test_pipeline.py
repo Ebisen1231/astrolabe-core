@@ -3,6 +3,7 @@
 import pytest
 
 from astrolabe.config import load_config
+from astrolabe.ledger import events, store
 from astrolabe.ledger.derive import concept_id_from_name
 from astrolabe.llm.budget import BudgetExceededError, TokenBudget
 from astrolabe.llm.fixtures import FixtureLLM
@@ -82,6 +83,28 @@ def test_morning_writes_html_and_records_relative_path(ledger, fixtures_dir, tmp
         "SELECT html_path FROM daily_reports WHERE date = ?", (TODAY,)
     ).fetchone()
     assert row["html_path"] == f"{TODAY}.html"
+
+
+def test_due_review_is_added_to_text_html_and_daily_report(ledger, fixtures_dir, tmp_path):
+    events.append_event(
+        ledger,
+        "marked_known",
+        "rag",
+        {"name": "RAG"},
+        ts="2026-07-01T00:00:00+09:00",
+    )
+    outcome = _run(ledger, fixtures_dir, html_output_dir=tmp_path)
+    assert outcome.reviews[0]["concept_id"] == "rag"
+    assert "今日の復習" in outcome.report_text
+    assert "今日の復習" in outcome.html_path.read_text(encoding="utf-8")
+    assert store.get_daily_report(ledger, TODAY)["items"]["reviews"] == outcome.reviews
+
+
+def test_no_due_review_omits_rendered_sections(ledger, fixtures_dir, tmp_path):
+    outcome = _run(ledger, fixtures_dir, html_output_dir=tmp_path)
+    assert outcome.reviews == []
+    assert "今日の復習" not in outcome.report_text
+    assert "今日の復習" not in outcome.html_path.read_text(encoding="utf-8")
 
 
 def test_second_run_dedupes_reported_items(ledger, fixtures_dir):

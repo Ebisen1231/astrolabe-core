@@ -13,7 +13,7 @@ from pathlib import Path
 from astrolabe import render, render_html
 from astrolabe.collect import arxiv, dedupe, rss
 from astrolabe.config import Config
-from astrolabe.ledger import derive, events, store
+from astrolabe.ledger import derive, events, review, store
 from astrolabe.ledger.backend import LedgerBackend
 from astrolabe.llm import synthesize, triage
 from astrolabe.llm.budget import TokenBudget
@@ -26,6 +26,7 @@ class MorningOutcome:
     meta: dict
     topics: list[dict]
     map_delta_text: str
+    reviews: list[dict]
     html_path: Path | None = None
 
 
@@ -126,6 +127,11 @@ def run_morning(
             meta["edges"] = n_edges
 
     meta["usage"] = budget.summary()
+    reviews = review.due_reviews(events.load_events(conn), today, limit=5)
+    concept_names = {row["id"]: row["name"] for row in store.list_concepts(conn)}
+    for row in reviews:
+        row["concept_name"] = concept_names.get(row["concept_id"], row["concept_name"])
+    meta["reviews_due"] = len(reviews)
     html_path: Path | None = None
     stored_html_path: str | None = None
     if html_output_dir is not None:
@@ -136,6 +142,7 @@ def run_morning(
             map_delta,
             store.list_concepts(conn),
             store.list_edges(conn),
+            reviews=reviews,
             repository=feedback_repository,
         )
         stored_path = html_path
@@ -146,17 +153,18 @@ def run_morning(
     store.save_daily_report(
         conn,
         today,
-        {"topics": topics, "meta": meta},
+        {"topics": topics, "reviews": reviews, "meta": meta},
         map_delta,
         stored_html_path,
     )
     store.save_llm_usage(conn, today, run_id, meta["usage"])
     return MorningOutcome(
-        report_text=render.render_report(today, topics, map_delta, meta),
+        report_text=render.render_report(today, topics, map_delta, meta, reviews=reviews),
         date=today,
         meta=meta,
         topics=topics,
         map_delta_text=map_delta,
+        reviews=reviews,
         html_path=html_path,
     )
 

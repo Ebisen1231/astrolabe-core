@@ -158,6 +158,7 @@ def export_ledger(conn, output_dir: Path) -> ExportResult:
             "date": report["date"],
             "map_delta_text": report["map_delta_text"],
             "topics": [_export_topic(topic) for topic in items.get("topics", [])],
+            "reviews": items.get("reviews", []),
             "meta": items.get("meta", {}),
         }
         _write_json(output_dir / "reports" / f"{report['date']}.json", report_export)

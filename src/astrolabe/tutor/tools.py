@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from astrolabe.ledger import derive, events, store
+from astrolabe.ledger import derive, events, review, store
 from astrolabe.ledger.backend import LedgerBackend, as_backend
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -106,6 +106,7 @@ class TutorTools:
         kind: str,
         est_minutes: int,
         edges: list[dict],
+        metadata: dict | None = None,
     ) -> dict[str, Any]:
         if kind not in TASK_KINDS:
             raise TutorToolError("不正なtask kind")
@@ -114,6 +115,9 @@ class TutorTools:
         if not 1 <= est_minutes <= 480:
             raise TutorToolError("est_minutesは1..480")
         ts = self._timestamp()
+        event_payload = {"name": concept_name, "edges": edges}
+        if metadata:
+            event_payload["metadata"] = metadata
         task = store.create_task(
             self.ledger,
             {
@@ -127,7 +131,7 @@ class TutorTools:
                 "ts": ts,
                 "type": "task_created",
                 "concept_id": concept_id,
-                "payload": {"name": concept_name, "edges": edges},
+                "payload": event_payload,
             },
         )
         return {"type": "task_created", "task": task, "edges": edges}
@@ -158,6 +162,7 @@ class TutorTools:
         user_answer: str,
         score: float,
         feedback: str,
+        grade: int | None = None,
     ) -> dict[str, Any]:
         if action == "ask":
             if not question.strip() or not 2 <= len(options) <= 4:
@@ -173,11 +178,14 @@ class TutorTools:
             raise TutorToolError("quiz actionはaskまたはgrade")
         if not user_answer.strip() or not 0 <= score <= 1:
             raise TutorToolError("採点には回答と0..1のscoreが必要")
+        if isinstance(grade, bool) or grade not in (1, 2, 3, 4):
+            raise TutorToolError("採点にはgrade 1..4が必要")
         payload = {
             "name": concept_name,
             "question": question,
             "user_answer": user_answer,
             "score": score,
+            "grade": grade,
             "feedback": feedback,
         }
         event_id = events.append_event(
@@ -189,8 +197,19 @@ class TutorTools:
             "event_id": event_id,
             "concept_id": concept_id,
             "score": score,
+            "grade": grade,
             "feedback": feedback,
         }
+
+    def get_due_reviews(self, limit: int) -> dict[str, Any]:
+        if not 1 <= limit <= 5:
+            raise TutorToolError("復習件数は1..5")
+        today = self._now().astimezone(JST).date().isoformat()
+        rows = review.due_reviews(events.load_events(self.ledger), today, limit=limit)
+        names = {row["id"]: row["name"] for row in self.ledger.list_concepts()}
+        for row in rows:
+            row["concept_name"] = names.get(row["concept_id"], row["concept_name"])
+        return {"type": "due_reviews", "date": today, "reviews": rows}
 
     def update_profile(
         self,
